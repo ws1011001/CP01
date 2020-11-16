@@ -102,11 +102,16 @@ function OutputFiles = Run(sProcess, sInputs) %#ok<DEFNU>
     ThresSDwt   = sProcess.options.threshold1.Value{1};
     ThresPeak   = sProcess.options.threshold2.Value{1} / 10e5;  % convert microvolts to volts
     ThresVars   = sProcess.options.threshold3.Value{1} / 10e5;  % convert microvolts to volts  
-    ThresChan   = sProcess.options.threshold4.Value{1};       
-    % get filenames to import
-    EventFile  = sProcess.options.badevtfile.Value{1};
-    %FileFormat = sProcess.options.badevtfile.Value{2};  % only support .csv for now...
-    [EventType, EventTime, EventBadTime] = eventscsv(EventFile);
+    ThresChan   = sProcess.options.threshold4.Value{1};  
+    % read BAD_suspected events
+    EventFile  = sProcess.options.badevtfile.Value{1};  % get filenames to import
+    if exist(EventFile,'file')
+      %FileFormat = sProcess.options.badevtfile.Value{2};  % only support .csv for now...
+      [EventType, EventTime, EventBadTime] = eventscsv(EventFile);      
+    else
+      EventBadTime = [];
+    end        
+
     fprintf('------------------------------------------------------------------------------------------------------\n');
     fprintf('The following parameters were used to detect artifacts for %d trials: %d SDs (across trials), %d SDs (within trial), %d uV Peak Amplitude, %d uV consecutive variation.\n',...
       length(sInputs), ThresSDat, ThresSDwt, sProcess.options.threshold2.Value{1} , sProcess.options.threshold3.Value{1});
@@ -142,7 +147,11 @@ function OutputFiles = Run(sProcess, sInputs) %#ok<DEFNU>
         DataES.FSelected = DataES.F(ChannelSelected(ChannelGood(ChannelSelected)), :);
         [DataES.TrialType, DataES.TrialIndex]=commentsplit(DataES.Comment);
         % check overlap with the bad segments
-        [DataES.TrialEpoch, DataES.BadOverlaps] = badvalidate(DataES.TrialType, DataES.TrialIndex, DataES.Time, EventType, EventTime, EventBadTime);
+        if ~isempty(EventBadTime)
+          [DataES.TrialEpoch, DataES.BadOverlaps] = badvalidate(DataES.TrialType, DataES.TrialIndex, DataES.Time, EventType, EventTime, EventBadTime);
+        else
+          DataES.BadOverlaps = [];
+        end
         
         % ===== automatic detection Hirshorn 2016 =====
         DataES.TimeN = length(DataES.Time);
