@@ -207,19 +207,20 @@ function OutputFiles = Run(sProcess, sInputs) %#ok<DEFNU>
       
       % report the detected event and related channels
       if any(DataES.checkThresSDat) || any(DataES.checkThresSDwt) || any(DataES.checkThresPeak) || any(DataES.checkThresVars)
-          % report detected trial and corresponding channels                       
-          criterion = '';
-          chan2disp = '';
-          if any(DataES.BadOverlaps); criterion = 'overlaps with BAD segments + '; end
-          if any(DataES.checkThresSDwt); criterion = [criterion, '[wtSD]']; chan2disp = sprintf('(%s), ', DataES.ChannelBadSDwt{:}); end
-          if any(DataES.checkThresSDat); criterion = [criterion, '[atSD]']; chan2disp = [chan2disp, '|', sprintf('(%s), ', DataES.ChannelBadSDat{:})]; end
-          if any(DataES.checkThresPeak); criterion = [criterion, '[Peak]']; chan2disp = [chan2disp, '|', sprintf('(%s), ', DataES.ChannelBadPeak{:})]; end                
-          if any(DataES.checkThresVars); criterion = [criterion, '[Vars]']; chan2disp = [chan2disp, '|', sprintf('(%s), ', DataES.ChannelBadVars{:})]; end  
-          DataES.ChannelBadN = sum((DataES.checkThresSDat + DataES.checkThresSDwt + DataES.checkThresPeak + DataES.checkThresVars) ~= 0);
-          fprintf('Trial %s (#%d) %s: spikes are detected in %d channels %s.\n', DataES.TrialType, DataES.TrialIndex, criterion, DataES.ChannelBadN, chan2disp)    
+        % report detected trial and corresponding channels                       
+        criterion = '';
+        chan2disp = '';
+        if any(DataES.BadOverlaps); criterion = 'overlaps with BAD segments + '; end
+        if any(DataES.checkThresSDwt); criterion = [criterion, '[wtSD]']; chan2disp = sprintf('(%s), ', DataES.ChannelBadSDwt{:}); end
+        if any(DataES.checkThresSDat); criterion = [criterion, '[atSD]']; chan2disp = [chan2disp, '|', sprintf('(%s), ', DataES.ChannelBadSDat{:})]; end
+        if any(DataES.checkThresPeak); criterion = [criterion, '[Peak]']; chan2disp = [chan2disp, '|', sprintf('(%s), ', DataES.ChannelBadPeak{:})]; end                
+        if any(DataES.checkThresVars); criterion = [criterion, '[Vars]']; chan2disp = [chan2disp, '|', sprintf('(%s), ', DataES.ChannelBadVars{:})]; end  
+        DataES.ChannelBadN = sum((DataES.checkThresSDat + DataES.checkThresSDwt + DataES.checkThresPeak + DataES.checkThresVars) ~= 0);
+        fprintf('Trial %s (#%d) %s: spikes are detected in %d channels %s.\n', DataES.TrialType, DataES.TrialIndex, criterion, DataES.ChannelBadN, chan2disp)    
+      elseif any(DataES.BadOverlaps)
+        fprintf('Trial %s (#%d) is in BAD segments but not detected by our method.\n', DataES.TrialType, DataES.TrialIndex)
       else
-          iOk(iTrial) = true;
-          if any(DataES.BadOverlaps); fprintf('Trial %s (#%d) is in BAD segments but not detected by our method.\n', DataES.TrialType, DataES.TrialIndex); end
+        iOk(iTrial) = true;
       end
       % save ES data
       save(file_fullpath(sInputs(iTrial).FileName), 'DataES', '-append');
@@ -257,11 +258,17 @@ function OutputFiles = Run(sProcess, sInputs) %#ok<DEFNU>
     fprintf('In summary, each of the %d channels (%s) led to at least %d%% trials being rejected.\n', length(chan2reject), sprintf('[%s]', ChannelRejectNames{:}), ThresChan);
     fprintf('After removing the channels listed above, the number of rejected trials should be %d.\n', nnz(sum(ChannelTrialsOutAllUpdate)));
     
-
-    % Return all the input files
+    % Return all the input files and bad files
     OutputFiles = {sInputs(iOk).FileName};
-%     % Reference OutputFile in the database:
-%     db_add_data(sInput.iStudy, OutputFile, DataES);
+    BadFiles = {sInputs(~iOk).FileName};
+    [BadPaths, BadFiles] = cellfun(@(x) fileparts(file_fullpath(x)), BadFiles, 'UniformOutput', 0);  % extract filenames that are rejected
+    BadFiles = cellfun(@(x) sprintf('%s.mat', x), BadFiles, 'UniformOutput', 0);                     % add file extension - .mat
+    OutputPaths = unique(BadPaths);
+    for iOutputPath = 1:length(OutputPaths)
+      iBadTrials = cell2mat(cellfun(@(x) strcmp(x, OutputPaths{iOutputPath}), BadPaths, 'UniformOutput', 0));
+      BadTrials = BadFiles(logical(iBadTrials))';
+      save(fullfile(OutputPaths{iOutputPath}, 'brainstormstudy.mat'), 'BadTrials', '-append');
+    end
 end
 
 %% sub-functions
