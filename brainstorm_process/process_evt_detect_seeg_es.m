@@ -81,6 +81,10 @@ function sProcess = GetDescription() %#ok<DEFNU>
     sProcess.options.badevtfile.Comment = 'Event file with BAD segments:';
     sProcess.options.badevtfile.Type    = 'filename';
     sProcess.options.badevtfile.Value   = SelectOptions;
+    % Enable classification
+    sProcess.options.ismarkbadtrials.Comment = 'Mark bad trials';
+    sProcess.options.ismarkbadtrials.Type    = 'checkbox';
+    sProcess.options.ismarkbadtrials.Value   = 1;
 
 end
 
@@ -110,7 +114,9 @@ function OutputFiles = Run(sProcess, sInputs) %#ok<DEFNU>
       [EventType, EventTime, EventBadTime] = eventscsv(EventFile);      
     else
       EventBadTime = [];
-    end        
+    end    
+    % if mark bad trials or only output reports
+    ismarkbadtrials = sProcess.options.ismarkbadtrials.Value;
 
     fprintf('------------------------------------------------------------------------------------------------------\n');
     fprintf('The following parameters were used to detect artifacts for %d trials: %d SDs (across trials), %d SDs (within trial), %d uV Peak Amplitude, %d uV consecutive variation.\n',...
@@ -259,15 +265,17 @@ function OutputFiles = Run(sProcess, sInputs) %#ok<DEFNU>
     fprintf('After removing the channels listed above, the number of rejected trials should be %d.\n', nnz(sum(ChannelTrialsOutAllUpdate)));
     
     % Return all the input files and bad files
-    OutputFiles = {sInputs(iOk).FileName};
-    BadFiles = {sInputs(~iOk).FileName};
-    [BadPaths, BadFiles] = cellfun(@(x) fileparts(file_fullpath(x)), BadFiles, 'UniformOutput', 0);  % extract filenames that are rejected
-    BadFiles = cellfun(@(x) sprintf('%s.mat', x), BadFiles, 'UniformOutput', 0);                     % add file extension - .mat
-    OutputPaths = unique(BadPaths);
-    for iOutputPath = 1:length(OutputPaths)
-      iBadTrials = cell2mat(cellfun(@(x) strcmp(x, OutputPaths{iOutputPath}), BadPaths, 'UniformOutput', 0));
-      BadTrials = BadFiles(logical(iBadTrials))';
-      save(fullfile(OutputPaths{iOutputPath}, 'brainstormstudy.mat'), 'BadTrials', '-append');
+    if ismarkbadtrials
+      OutputFiles = {sInputs(iOk).FileName};
+      BadFiles = {sInputs(~iOk).FileName};
+      [BadPaths, BadFiles] = cellfun(@(x) fileparts(file_fullpath(x)), BadFiles, 'UniformOutput', 0);  % extract filenames that are rejected
+      BadFiles = cellfun(@(x) sprintf('%s.mat', x), BadFiles, 'UniformOutput', 0);                     % add file extension - .mat
+      OutputPaths = unique(BadPaths);
+      for iOutputPath = 1:length(OutputPaths)
+        iBadTrials = cell2mat(cellfun(@(x) strcmp(x, OutputPaths{iOutputPath}), BadPaths, 'UniformOutput', 0));
+        BadTrials = BadFiles(logical(iBadTrials))';
+        save(fullfile(OutputPaths{iOutputPath}, 'brainstormstudy.mat'), 'BadTrials', '-append');
+      end
     end
 end
 
