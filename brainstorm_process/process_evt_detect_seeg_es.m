@@ -31,7 +31,7 @@ end
 %% ===== GET DESCRIPTION =====
 function sProcess = GetDescription() %#ok<DEFNU>
     % Description the process
-    sProcess.Comment     = 'Detect potential epileptic artifacts (Hirshorn 2016)';
+    sProcess.Comment     = 'Detect potential epileptic artifacts';
     sProcess.FileTag     = 'ES';
     sProcess.Category    = 'Custom';
     sProcess.SubGroup    = 'Events';
@@ -51,32 +51,38 @@ function sProcess = GetDescription() %#ok<DEFNU>
     sProcess.options.montage.Type    = 'montage';
     sProcess.options.montage.Value   = '';  
     % montage comment
-    sProcess.options.label1.Comment = '<I><FONT color="#777777">Montage files calculated in this process would be deleted in the end.</FONT></I>';
-    sProcess.options.label1.Type    = 'label';
+    sProcess.options.label21.Comment = '<I><FONT color="#777777">Montage files calculated in this process would be deleted at the end.</FONT></I>';
+    sProcess.options.label21.Type    = 'label';
     % Separator
     sProcess.options.separator1.Type = 'separator';
     sProcess.options.separator1.Comment = ' ';    
+    % Title
+    sProcess.options.label11.Comment = '<BR><B>Hirshorn et al., 2016</B>:';
+    sProcess.options.label11.Type    = 'label';
     % Threshold0 - SDs from the average amplitude (across trials)
-    sProcess.options.threshold0.Comment = 'Peak X SDs away from the Mean (across trials): ';
+    sProcess.options.threshold0.Comment = 'The difference between peak amplitude and mean amplitude (across trials) is greater than: ';
     sProcess.options.threshold0.Type    = 'value';
     sProcess.options.threshold0.Value   = {5, 'SDs', 0};    
     % Threshold1 - SDs from the average amplitude (within trial)
-    sProcess.options.threshold1.Comment = '<BR><U><B>[deprecated]</B></U> Peak X SDs away from the Mean (within trial): ';
+    sProcess.options.threshold1.Comment = 'The difference between peak amplitude and mean amplitude (within trials) is greater than: ';
     sProcess.options.threshold1.Type    = 'value';
     sProcess.options.threshold1.Value   = {1000, 'SDs', 0};
     % Threshold2 - absolute upper limit
-    sProcess.options.threshold2.Comment = 'Peak amplitude (abs.) threshold: ';
+    sProcess.options.threshold2.Comment = 'Peak amplitude (abs.) is greater than: ';
     sProcess.options.threshold2.Type    = 'value';
     sProcess.options.threshold2.Value   = {350, 'uV', []};    
     % Threshold3 - variation between consecutive time points
-    sProcess.options.threshold3.Comment = 'Variation between consecutive points (abs.): ';
+    sProcess.options.threshold3.Comment = 'Variation between consecutive points (abs.) is greater than: ';
     sProcess.options.threshold3.Type    = 'value';
     sProcess.options.threshold3.Value   = {25, 'uV', []}; 
     % Separator
     sProcess.options.separator2.Type = 'separator';
-    sProcess.options.separator2.Comment = ' ';     
+    sProcess.options.separator2.Comment = ' ';   
+    % Title
+    sProcess.options.label12.Comment = '<BR><B>Trial rejection</B>:';
+    sProcess.options.label12.Type    = 'label';    
     % Threshold4 - bad channel threshold : If a channel led to more than X% of the trials being rejected, this channel was instead rejected.
-    sProcess.options.threshold4.Comment = 'Examine channels that led to more than X% trials being rejected: ';
+    sProcess.options.threshold4.Comment = 'Examine channels that led to the rejetion of trials more than: ';
     sProcess.options.threshold4.Type    = 'value';
     sProcess.options.threshold4.Value   = {20, '%', []};     
     % Validation with visually detected BAD events
@@ -90,12 +96,12 @@ function sProcess = GetDescription() %#ok<DEFNU>
         'files', ...                          % Selection mode: {files,dirs,files_and_dirs}
         bst_get('FileFilters', 'events'), ... % Get all the available file formats
         'EventsIn'};                          % DefaultFormats: {ChannelIn,DataIn,DipolesIn,EventsIn,MriIn,NoiseCovIn,ResultsIn,SspIn,SurfaceIn,TimefreqIn
-    sProcess.options.badevtfile.Comment = 'Event file with BAD segments:';
+    sProcess.options.badevtfile.Comment = 'Select event file with BAD segments: ';
     sProcess.options.badevtfile.Type    = 'filename';
     sProcess.options.badevtfile.Value   = SelectOptions;
     % BAD segments comment
-    sProcess.options.label2.Comment = '<I><FONT color="#777777">Validate the criteria with visually detected BAD segments of raw data.</FONT></I>';
-    sProcess.options.label2.Type    = 'label';    
+    sProcess.options.label22.Comment = '<I><FONT color="#777777">Validate the criteria by estimating the overalp between the rejected trials and visually detected BAD segments of raw data.</FONT></I>';
+    sProcess.options.label22.Type    = 'label';    
     % reject trials
     sProcess.options.ismarkbadtrials.Comment = 'Reject trials';
     sProcess.options.ismarkbadtrials.Type    = 'checkbox';
