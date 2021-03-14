@@ -22,7 +22,7 @@ function varargout = process_evt_detect_seeg_es( varargin )
 % For more information type "brainstorm license" at command prompt.
 % =============================================================================@
 %
-% Authors: Shuai Wang, Anne-Sophie Dubarry 2020
+% Authors: Shuai Wang, Anne-Sophie Dubarry 2020-2021
 
 eval(macro_method);
 end
@@ -46,12 +46,22 @@ function sProcess = GetDescription() %#ok<DEFNU>
     sProcess.options.sensortypes.Comment = 'Sensor types or names (empty=all): ';
     sProcess.options.sensortypes.Type    = 'text';
     sProcess.options.sensortypes.Value   = 'SEEG';    
+    % apply montage
+    sProcess.options.montage.Comment = 'Montage name: ';
+    sProcess.options.montage.Type    = 'montage';
+    sProcess.options.montage.Value   = '';  
+    % montage comment
+    sProcess.options.label1.Comment = '<I><FONT color="#777777">Montage files calculated in this process would be deleted in the end.</FONT></I>';
+    sProcess.options.label1.Type    = 'label';
+    % Separator
+    sProcess.options.separator.Type = 'separator';
+    sProcess.options.separator.Comment = ' ';    
     % Threshold0 - SDs from the average amplitude (across trials)
     sProcess.options.threshold0.Comment = 'Peak X SDs away from the Mean (across trials): ';
     sProcess.options.threshold0.Type    = 'value';
     sProcess.options.threshold0.Value   = {5, 'SDs', 0};    
     % Threshold1 - SDs from the average amplitude (within trial)
-    sProcess.options.threshold1.Comment = '[deprecated] Peak X SDs away from the Mean (within trial): ';
+    sProcess.options.threshold1.Comment = '<BR><U><B>[deprecated]</B></U> Peak X SDs away from the Mean (within trial): ';
     sProcess.options.threshold1.Type    = 'value';
     sProcess.options.threshold1.Value   = {1000, 'SDs', 0};
     % Threshold2 - absolute upper limit
@@ -62,12 +72,14 @@ function sProcess = GetDescription() %#ok<DEFNU>
     sProcess.options.threshold3.Comment = 'Variation between consecutive points (abs.): ';
     sProcess.options.threshold3.Type    = 'value';
     sProcess.options.threshold3.Value   = {25, 'uV', []}; 
+    % Separator
+    sProcess.options.separator.Type = 'separator';
+    sProcess.options.separator.Comment = ' ';     
     % Threshold4 - bad channel threshold : If a channel led to more than X% of the trials being rejected, this channel was instead rejected.
     sProcess.options.threshold4.Comment = 'Examine channels that led to more than X% trials being rejected: ';
     sProcess.options.threshold4.Type    = 'value';
     sProcess.options.threshold4.Value   = {20, '%', []};     
     % Validation with visually detected BAD events
-    % File selection options
     SelectOptions = {...
         '', ...                               % Filename
         '', ...                               % FileFormat
@@ -81,11 +93,17 @@ function sProcess = GetDescription() %#ok<DEFNU>
     sProcess.options.badevtfile.Comment = 'Event file with BAD segments:';
     sProcess.options.badevtfile.Type    = 'filename';
     sProcess.options.badevtfile.Value   = SelectOptions;
-    % Enable classification
-    sProcess.options.ismarkbadtrials.Comment = 'Mark bad trials';
+    % BAD segments comment
+    sProcess.options.label2.Comment = '<I><FONT color="#777777">Validate the criteria with visually detected BAD segments of raw data.</FONT></I>';
+    sProcess.options.label2.Type    = 'label';    
+    % reject trials
+    sProcess.options.ismarkbadtrials.Comment = 'Reject trials';
     sProcess.options.ismarkbadtrials.Type    = 'checkbox';
     sProcess.options.ismarkbadtrials.Value   = 1;
-
+    % mark trials
+    sProcess.options.isaddevent.Comment = 'Add the reason of rejection as event';
+    sProcess.options.isaddevent.Type    = 'checkbox';
+    sProcess.options.isaddevent.Value   = 1;    
 end
 
 
@@ -101,12 +119,14 @@ function OutputFiles = Run(sProcess, sInputs) %#ok<DEFNU>
     % ===== GET OPTIONS ===== 
     % define channels
     SensorTypes = sProcess.options.sensortypes.Value;
+    % montage name
+    MontageName  = sProcess.options.montage.Value;
     % get thresholds
-    ThresSDat   = sProcess.options.threshold0.Value{1};
-    ThresSDwt   = sProcess.options.threshold1.Value{1};
-    ThresPeak   = sProcess.options.threshold2.Value{1} / 10e5;  % convert microvolts to volts
-    ThresVars   = sProcess.options.threshold3.Value{1} / 10e5;  % convert microvolts to volts  
-    ThresChan   = sProcess.options.threshold4.Value{1};  
+    ThresSDat   = sProcess.options.threshold0.Value{1};         % across-trial SDs
+    ThresSDwt   = sProcess.options.threshold1.Value{1};         % within-trial SDs
+    ThresPeak   = sProcess.options.threshold2.Value{1} / 10e5;  % peak amp.; convert microvolts to volts
+    ThresVars   = sProcess.options.threshold3.Value{1} / 10e5;  % variation between consecutive points; convert microvolts to volts  
+    ThresChan   = sProcess.options.threshold4.Value{1};         % potential BAD hannels
     % read BAD_suspected events
     EventFile  = sProcess.options.badevtfile.Value{1};  % get filenames to import
     if exist(EventFile,'file')
@@ -117,13 +137,20 @@ function OutputFiles = Run(sProcess, sInputs) %#ok<DEFNU>
     end    
     % if mark bad trials or only output reports
     ismarkbadtrials = sProcess.options.ismarkbadtrials.Value;
+    isaddevent = sProcess.options.isaddevent.Value;
+    
+    % ===== APPLY MONTAGE =====
+    fprintf('Calculate temporary montage [%s] for trial rejection.\n', MontageName);
+    MonopolarInputs = sInputs;
+    MontageFiles = bst_process('CallProcess', 'process_montage_apply', {sInputs.FileName}, [], 'montage', MontageName, 'createchan', 1);    
+    sInputs = bst_process('GetInputStruct', {MontageFiles.FileName});  % use montage files (default: bipolar2) as inputs    
 
     fprintf('------------------------------------------------------------------------------------------------------\n');
-    fprintf('The following parameters were used to detect artifacts for %d trials: %d SDs (across trials), %d SDs (within trial), %d uV Peak Amplitude, %d uV consecutive variation.\n',...
+    fprintf('The following parameters were used to detect artifacts for %d trials: \n%d SDs (across trials), \n%d SDs (within trial), \n%d uV Peak Amplitude, \n%d uV consecutive variation.\n',...
       length(sInputs), ThresSDat, ThresSDwt, sProcess.options.threshold2.Value{1} , sProcess.options.threshold3.Value{1});
     
     % Get current progressbar position
-    progressPos = bst_progress('get');
+    progressPos = bst_progress('get');    
     
     % ===== INITIALIZE VECTORS =====    
     % select good channels - all trials have the same configuration of channels
@@ -202,6 +229,8 @@ function OutputFiles = Run(sProcess, sInputs) %#ok<DEFNU>
     for iTrial = 1:length(sInputs)
       % read ES data
       load(file_fullpath(sInputs(iTrial).FileName), 'DataES');
+      % read events of monopolar file
+      load(file_fullpath(MonopolarInputs(iTrial).FileName), 'Events');
       % extract the mean values for both this trial and the rest of trials
       iTrialMean = ChannelTrialsMeans(:, iTrial);
       ChannelOtherTrialsMeans = ChannelTrialsMeans;
@@ -223,6 +252,30 @@ function OutputFiles = Run(sProcess, sInputs) %#ok<DEFNU>
         if any(DataES.checkThresVars); criterion = [criterion, '[Vars]']; chan2disp = [chan2disp, '|', sprintf('(%s), ', DataES.ChannelBadVars{:})]; end  
         DataES.ChannelBadN = sum((DataES.checkThresSDat + DataES.checkThresSDwt + DataES.checkThresPeak + DataES.checkThresVars) ~= 0);
         fprintf('Trial %s (#%d) %s: spikes are detected in %d channels %s.\n', DataES.TrialType, DataES.TrialIndex, criterion, DataES.ChannelBadN, chan2disp)    
+        % add ES as an event marker to this trial
+        if isaddevent
+          if isempty(Events)
+            Events(1).label = criterion;                    % mark the reason to reject this trial
+            Events(1).color = [0, 0.5, 0];                  % dark green
+            Events(1).epochs = 1;
+            Events(1).times = 0;                            % mark at 0 ms
+            Events(1).reactTimes = [];
+            Events(1).select = 1;
+            Events(1).channels = {[]};
+            Events(1).notes = {['Channels: ', chan2disp]};  % bad channels
+          else
+            iEvt = length(Events) + 1;
+            Events(iEvt).label = criterion;                    % mark the reason to reject this trial
+            Events(iEvt).color = [0, 0.5, 0];                  % dark green
+            Events(iEvt).epochs = 1;
+            Events(iEvt).times = 0;                            % mark at 0 ms
+            Events(iEvt).reactTimes = [];
+            Events(iEvt).select = 1;
+            Events(iEvt).channels = {[]};
+            Events(iEvt).notes = {['Channels: ', chan2disp]};  % bad channels            
+          end
+        end
+        save(file_fullpath(MonopolarInputs(iTrial).FileName), 'Events', '-append');  % save events to the monopolar trial
       elseif any(DataES.BadOverlaps)
         fprintf('Trial %s (#%d) is in BAD segments but not detected by our method.\n', DataES.TrialType, DataES.TrialIndex)
       else
@@ -277,6 +330,9 @@ function OutputFiles = Run(sProcess, sInputs) %#ok<DEFNU>
         save(fullfile(OutputPaths{iOutputPath}, 'brainstormstudy.mat'), 'BadTrials', '-append');
       end
     end
+    % ===== DELETE BIPOLAR FILES =====
+    fprintf('Clean up temporary montage [%s] files.\n', MontageName);
+    bst_process('CallProcess', 'process_delete', MontageFiles, [], 'target', 2);  % Delete folders
 end
 
 %% sub-functions
