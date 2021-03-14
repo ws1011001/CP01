@@ -1,12 +1,12 @@
 ## ---------------------------
-## [script name] RS_trigger_recover.R
+## [script name] ps01_DATA_recover_triggers.R
 ##
-## SCRIPT to ...
+## SCRIPT to recover missing triggers based on E-prime logs.
 ##
 ## By Shuai Wang, [date]
 ##
 ## ---------------------------
-## Notes:
+## Notes: - This script shold be performed on certain subject whose triggers are incomplete.
 ##   
 ##
 ## ---------------------------
@@ -16,25 +16,23 @@ rm(list=ls())
 ## ---------------------------
 
 ## set environment (packages, functions, working path etc.)
+# setup working path
+subj <- 'sub-07'
 mdir <- '/media/wang/BON/Projects/CP01/SEEG_LectureVWFA/sourcedata/eprime_logs'
-subj <- 'sub-04'
 wdir <- file.path(mdir,subj)
 frec <- sprintf('%s_ses-01_task-RS_run-01_events_recovered.csv',subj)
 # setup parameters
-blocks <- c(2,3,4,5)  # sub-04
-#blocks <- c(1,3,4,5)  # sub-06
-delay_limit <- 0.1  # in seconds
-## ---------------------------
-
-
+blocks <- c(1,2,3,4,5)  # sub-04: c(2,3,4,5); sub-06: c(1,3,4,5)
+delay_limit <- 0.1    # in seconds
 ## ---------------------------
 
 ## recover trigger for each block
+# initialize data frames
 delays_recorded <- data.frame(conditions=character(),delays=double())
 triggers_all <- data.frame(conditions=character(),onsets=double())
 for (i in 1:length(blocks)){
   ib <- blocks[i]
-  ## clean recorded triggers
+  # clean recorded triggers
   triggers <- read.csv(file.path(wdir,sprintf('%s_ses-01_task-RS_run-01_block-%02d_events.csv',subj,ib)),
                        header=FALSE,stringsAsFactors=FALSE)
   names(triggers) <- c('conditions','onsets','durations')
@@ -91,7 +89,13 @@ for (i in 1:length(blocks)){
   delays_recorded <- rbind(delays_recorded,edat[edat$onsets_trigger != 0,c('conditions','delays')])
   # combine triggers of all runs
   triggers_all <- rbind(triggers_all,edat[,c('conditions','onsets_trigger')])
+  # output the information of recovered timings
+  write.table(edat,file=file.path(wdir,sprintf('%s_ses-01_task-RS_run-01_block-%02d_events_recovered-info.csv',subj,ib)),
+              row.names=FALSE,quote=FALSE,sep=',')
 }
+# output the complete timings for BST
 triggers_all$durations <- rep(0,dim(triggers_all)[1])
 write.table(triggers_all,file=file.path(wdir,frec),col.names=FALSE,row.names=FALSE,quote=FALSE,sep=',')
+write.table(delays_recorded,file=file.path(wdir,sprintf('%s_ses-01_task-RS_run-01_events_recovered-delays.csv',subj,ib)),
+            row.names=FALSE,quote=FALSE,sep=',')
 ## ---------------------------
