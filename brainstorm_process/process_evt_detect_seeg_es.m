@@ -54,8 +54,8 @@ function sProcess = GetDescription() %#ok<DEFNU>
     sProcess.options.label1.Comment = '<I><FONT color="#777777">Montage files calculated in this process would be deleted in the end.</FONT></I>';
     sProcess.options.label1.Type    = 'label';
     % Separator
-    sProcess.options.separator.Type = 'separator';
-    sProcess.options.separator.Comment = ' ';    
+    sProcess.options.separator1.Type = 'separator';
+    sProcess.options.separator1.Comment = ' ';    
     % Threshold0 - SDs from the average amplitude (across trials)
     sProcess.options.threshold0.Comment = 'Peak X SDs away from the Mean (across trials): ';
     sProcess.options.threshold0.Type    = 'value';
@@ -73,8 +73,8 @@ function sProcess = GetDescription() %#ok<DEFNU>
     sProcess.options.threshold3.Type    = 'value';
     sProcess.options.threshold3.Value   = {25, 'uV', []}; 
     % Separator
-    sProcess.options.separator.Type = 'separator';
-    sProcess.options.separator.Comment = ' ';     
+    sProcess.options.separator2.Type = 'separator';
+    sProcess.options.separator2.Comment = ' ';     
     % Threshold4 - bad channel threshold : If a channel led to more than X% of the trials being rejected, this channel was instead rejected.
     sProcess.options.threshold4.Comment = 'Examine channels that led to more than X% trials being rejected: ';
     sProcess.options.threshold4.Type    = 'value';
@@ -101,7 +101,7 @@ function sProcess = GetDescription() %#ok<DEFNU>
     sProcess.options.ismarkbadtrials.Type    = 'checkbox';
     sProcess.options.ismarkbadtrials.Value   = 1;
     % mark trials
-    sProcess.options.isaddevent.Comment = 'Add the reason of rejection as event';
+    sProcess.options.isaddevent.Comment = 'Add the reason for rejection as event';
     sProcess.options.isaddevent.Type    = 'checkbox';
     sProcess.options.isaddevent.Value   = 1;    
 end
