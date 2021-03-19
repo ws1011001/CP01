@@ -64,7 +64,7 @@ for i=1:n
                                                        'avg_func',5,...  % Standard error:  sqrt(var(x)/N)
                                                        'weighted',0,'keepevents',0);
   end
-  % do permutation tests (paired) T = mean(A-B) / std(A-B) * sqrt(n)
+  % do permutation tests with paired samples T = mean(A-B) / std(A-B) * sqrt(n)
   fprintf('Conduct permutation tests [AAp-AAt | AVp-AVt | VAp-VAt | VVp-VVt] for subject %s ......\n',subj);
   working_files.perm2p.AAp2AAt=bst_process('CallProcess','process_test_permutation2p',...
                                            working_files.AAp.sFiles,working_files.AAt.sFiles,...
