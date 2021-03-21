@@ -32,8 +32,10 @@ n=length(subjects);
 montagetype='bipolar_2';
 conditions={'AAp','AAt','AVp','AVt','VAp','VAt','VVp','VVt'};
 ncond=length(conditions);
+baseline=[-0.2,-0.01];  % baseline from -200ms to -10ms
 timewindow=[-0.2,0.8];  % time-window of the epoch i.e. -200 ms to 800 ms
 nperm=10000;            % the number of randomizations in permutation tests
+fdr_duration=20;        % duration (in ms) for FDR correction in the time domain
 %% ---------------------------
 
 %% perform permutation tests on individual ERPs
@@ -41,16 +43,23 @@ for i=1:n
   subj=subjects{i};
   sdir=fullfile(bdir,subj);
   fworking=fullfile(sdir,sprintf('%s_ses-01_task-RS_run-01_ieeg_ERPs_working-files-%s.mat',subj,montagetype));
+  if exist(fworking,'file')
+    fprintf('Load previous working files for subject %s ......\n',subj);
+    load(fworking)
+  end
   % calculate the mean, SD, and SE of ERPs for each condition
   for icond=1:ncond
     fprintf('Calculate the mean, SD, and SE of ERPs for the condition %s for subject %s ......\n',conditions{icond},subj);
     % extract trials
     cdir=fullfile(sdir,sprintf('%s_%s',conditions{icond},montagetype));
-    ftrials=dir(fullfile(cdir,'data*.mat'));
-    ntrials=length(ftrials);
-    sFiles=cellfun(@(x) fullfile(cdir,x),{ftrials.name},'UniformOutput',0);
-    working_files.(conditions{icond}).sFiles=sFiles;  % save the full path to working files
-    % Process: By trial group (folder average) i.e. 'avgtype', 5
+    if ~exist(fworking,'file')
+      ftrials=dir(fullfile(cdir,'data*trial*.mat'));
+      sFiles=cellfun(@(x) fullfile(cdir,x),{ftrials.name},'UniformOutput',0);
+      working_files.(conditions{icond}).sFiles=sFiles;  % save the full path to working files
+    else
+      sFiles=working_files.(conditions{icond}).sFiles;
+    end
+    % calculate average and variation Process: By trial group (folder average) i.e. 'avgtype', 5
     working_files.(conditions{icond}).favg=bst_process('CallProcess','process_average',...
                                                        sFiles,[],'avgtype',5,...
                                                        'avg_func',1,...  % Arithmetic average:  mean(x)
@@ -63,8 +72,19 @@ for i=1:n
                                                        sFiles,[],'avgtype',5,...
                                                        'avg_func',5,...  % Standard error:  sqrt(var(x)/N)
                                                        'weighted',0,'keepevents',0);
+    % one sample T-test with baseline : Y = mean_trials(X); t = (Y - mean_time(Y(baseline)) / std_time(Y(baseline))); df = length(baseline) - 1
+    fprintf('Conduct one sample T-test for the condition %s for subject %s ......\n',conditions{icond},subj);
+    working_files.(conditions{icond}).ftest=bst_process('CallProcess','process_test_baseline',...
+                                                        sFiles,[],'baseline',baseline,'timewindow',timewindow,...
+                                                        'sensortypes','SEEG','isabs',0,'avgtime',0,'avgrow',0,...
+                                                        'test_type','ttest_baseline','tail','two');
+    % apply statistic threshold: alpha=0.05 (FDR: control time)
+    working_files.(conditions{icond}).ftest_fdr=bst_process('CallProcess','process_extract_pthresh',...
+                                                            working_files.(conditions{icond}).ftest,[],...
+                                                            'pthresh',0.05,'durthresh',fdr_duration,...
+                                                            'correction',3,'control1',0,'control2',1,'control3',0);
   end
-  % do permutation tests with paired samples T = mean(A-B) / std(A-B) * sqrt(n)
+  % do permutation tests with paired samples : T = mean(A-B) / std(A-B) * sqrt(n)
   fprintf('Conduct permutation tests [AAp-AAt | AVp-AVt | VAp-VAt | VVp-VVt] for subject %s ......\n',subj);
   working_files.perm2p.AAp2AAt=bst_process('CallProcess','process_test_permutation2p',...
                                            working_files.AAp.sFiles,working_files.AAt.sFiles,...
@@ -85,7 +105,15 @@ for i=1:n
                                            working_files.VVp.sFiles,working_files.VVt.sFiles,...
                                            'timewindow',timewindow,'sensortypes','SEEG','isabs',0,...
                                            'avgtime',0,'avgrow',0,'iszerobad',1,'Comment','',...
-                                           'test_type','ttest_paired','randomizations',nperm,'tail','two');      
+                                           'test_type','ttest_paired','randomizations',nperm,'tail','two'); 
+  % apply statistic threshold: alpha=0.05 (FDR: control time)
+  contrasts=fieldnames(working_files.perm2p);
+  for icont=1:length(contrasts)
+    working_files.perm2p.([contrasts{icont} '_fdr'])=bst_process('CallProcess','process_extract_pthresh',...
+                                                                 working_files.perm2p.(contrasts{icont}),[],...
+                                                                 'pthresh',0.05,'durthresh',fdr_duration,...
+                                                                 'correction',3,'control1',0,'control2',1,'control3',0);
+  end
   % output the full path of working files
   save(fworking,'working_files');
 end
