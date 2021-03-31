@@ -119,6 +119,25 @@ for i=1:n
 end
 %% ---------------------------
 
+%% visualize ERPs for each contrast
+for i=1:n
+  subj=subjects{i};
+  sdir=fullfile(bdir,subj);
+  % read working path
+  fworking=fullfile(sdir,sprintf('%s_ses-01_task-RS_run-01_ieeg_ERPs_working-files-%s.mat',subj,montagetype));
+  load(fworking);
+  % combine ERPs average and variations
+  for icond=1:ncond
+    con=conditions{icond};
+    davg=load(fullfile(bdir,working_files.(con).favg.FileName),'F');
+    dstd=load(fullfile(bdir,working_files.(con).fstd.FileName),'F');
+    dste=load(fullfile(bdir,working_files.(con).fste.FileName),'F');
+    ERPs.(con).avg=davg.F;
+    ERPs.(con).std=dstd.F;
+    ERPs.(con).ste=dste.F;
+  end
+end
+%% ---------------------------
 
 
 

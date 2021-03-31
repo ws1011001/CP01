@@ -177,64 +177,44 @@ end
 
 %% between-condition comparisons for each ROI at the group level
 conditions_pairs={{'AAp','AAt'},{'AVp','AVt'},{'VAp','VAt'},{'VVp','VVt'}};
+% extract ROI signals for each condition
 for iroi=1:nrois
   roi_name=rois_info{iroi,1};
   roi_nsub=rois_info{iroi,2};
   if roi_nsub >= 2 
     % load up ROI data
     froi=fullfile(gdir,sprintf('group_N%d_ROI-AAL3-%s_%s_%s_data_%d_%d_%d.mat',roi_nsub,roi_name,mtg,tfa,freq_step,freq_lobd,freq_upbd));
-    load(froi);
-    % read ROI-based signals of different conditions
-    for icond=1:ncond
-      zs_avg=zscores_avg(:,icond);
-      zs_avg=cat(2,zs_avg{:});
-      signals.(conditions{icond}).(roi_name).avg=zs_avg;
-    end
+    roi_data=load(froi);
+    signals_zs=roi_data.signals_zs;
+    % output ROI summary
+    odir=fullfile(gdir,sprintf('group_N%d_ROI-AAL3-%s_summary',roi_nsub,roi_name));
+%     if ~exist(odir,'dir'); mkdir(odir); end
+%     roi_plot_group_contacts(roi_data,OPTIONS,odir);
+%     % read ROI-based signals of different conditions
+%     fprintf('Extract signals of ROI %s from %d subjects to group data ......\n',roi_name,roi_nsub);
+%     for icond=1:ncond
+%       zs_avg=roi_data.zscores_avg(:,icond);
+%       zs_avg=cat(2,zs_avg{:});
+%       signals_zs.(conditions{icond}).(roi_name).avg=zs_avg;
+%     end 
+%     save(froi,'signals_zs','-append');
     % compare conditions
     for ipair=1:length(conditions_pairs)
       cond_pair=conditions_pairs{ipair};
-      rdir=fullfile(gdir,sprintf('group_ROIs_%s-%s',cond_pair{1},cond_pair{2}));
+      rdir=fullfile(odir,sprintf('group_ROI-AAL3-%s_%s-%s',roi_name,cond_pair{1},cond_pair{2}));
       if ~exist(rdir,'dir'); mkdir(rdir); end
-      fperm=fullfile(rdir,sprintf('ROIs_%s-%s_%s_%s_%d_%d_%d.mat',cond_pair{1},cond_pair{2},mtg,tfa,freq_step,freq_lobd,freq_upbd));
+      fperm=fullfile(rdir,sprintf('group_ROI-AAL3-%s_%s-%s_%s_%s_%d_%d_%d.mat',roi_name,cond_pair{1},cond_pair{2},mtg,tfa,freq_step,freq_lobd,freq_upbd));
       if ~exist(fperm,'file')
-        roi_perm=roi_stats_permutations(signals.(cond_pair{1}),signals.(cond_pair{2}),OPTIONS);
+        roi_perm=roi_stats_permutations(signals_zs.(cond_pair{1}),signals_zs.(cond_pair{2}),OPTIONS);
         save(fperm,'roi_perm');
       else
         load(fperm,'roi_perm');
       end
       roi_plot_conditions(roi_perm,cond_pair,OPTIONS,rdir); 
-    end     
-  end
-end
-
-
-
-
-for i=1:n
-  subj=subjects{i};
-  sdir=fullfile(bdir,subj);
-  fprintf('Perform permutation tests between conditions for each ROI for subject %s ......\n',mtg,tfa,subj);
-  % read ROI-based signals of different conditions
-  for icond=1:ncond
-    cdir=fullfile(sdir,conditions{icond});
-    fdat=fullfile(cdir,sprintf('%s_%s_%s_data_%d_%d_%d.mat',conditions{icond},mtg,tfa,freq_step,freq_lobd,freq_upbd)); 
-    load(fdat, 'roi');
-    signals.(conditions{icond})=roi.signals;
-  end
-  % compare conditions
-  for ipair=1:length(conditions_pairs)
-    cond_pair=conditions_pairs{ipair};
-    rdir=fullfile(sdir,sprintf('%s_ROIs_%s-%s',subj,cond_pair{1},cond_pair{2}));
-    if ~exist(rdir,'dir'); mkdir(rdir); end
-    fperm=fullfile(rdir,sprintf('ROIs_%s-%s_%s_%s_%d_%d_%d.mat',cond_pair{1},cond_pair{2},mtg,tfa,freq_step,freq_lobd,freq_upbd));
-    if ~exist(fperm,'file')
-      roi_perm=roi_stats_permutations(signals.(cond_pair{1}),signals.(cond_pair{2}),OPTIONS);
-      save(fperm,'roi_perm');
-    else
-      load(fperm,'roi_perm');
     end
-    roi_plot_conditions(roi_perm,cond_pair,OPTIONS,rdir); 
-  end 
+    % clean up working variables
+    clear signals_zs roi_perm
+  end
 end
 %% ---------------------------
 
