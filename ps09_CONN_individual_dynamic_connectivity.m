@@ -34,13 +34,15 @@ tfa='morlet';                           % time-frequency analysis
 freqb = [[10, 40, 80]; [10, 80, 120]];  % frequency band of interests (FBI)
 nfreqb=size(freqb,1);                   % number of FBI
 time = -0.4:0.001:0.8;                  % from -400ms to 800ms
-win_noedges = [-0.3 0.7];               % time-window to remove wavelet edges
 conditions={'Ap','Vp'};                 % conditions
 ncond=length(conditions);               % number of conditions
 data_mode={'ERP','HGA'};                % data modality : ERP or high-gamma activity
 nmode=length(data_mode);                % number of data modalities
 max_r=15;                               % max radius to combine contacts
 min_w=0.3;                              % min ICC to combine contacts
+win_noedges = [101 1100];               % time-window to remove wavelet edges (in samples)
+win_length = 50;
+overlap = 0.5;
 % set switches
 isGetROIs=false;
 isDynConn=true;
@@ -131,10 +133,20 @@ if isDynConn
         load(fdat,'roi_data');
         signals=roi_data(roi_idx,end);
         signals=permute(cat(3, signals{:}), [3 1 2]);  % convert cell array to matrix
-        % combine clusters (as the ROI of VWFA)
-        signals_vwfa=mean(signals(roi_vwfa,:,:),1);  % average the VWFA signals - do not squeeze
-        signals(roi_vwfa,:,:)=[];                    % remove the original VWFA signals
-        signals=[signals;signals_vwfa];              % put the averaged VWFA signal at the bottom
+%         % combine clusters (as the ROI of VWFA)
+%         signals_vwfa=mean(signals(roi_vwfa,:,:),1);  % average the VWFA signals - do not squeeze
+%         signals(roi_vwfa,:,:)=[];                    % remove the original VWFA signals
+%         signals=[signals;signals_vwfa];              % put the averaged VWFA signal at the bottom
+        % calculate dynamic connectivity for each trial
+        ntrials = size(signals, 3);
+        nets_dyn = cell(ntrials, 1);
+        for k = 1:ntrials
+          ts = signals(:, win_noedges(1):win_noedges(2), k);
+          nets_dyn{k} = construct_dynamic_networks(ts, win_length, overlap);
+        end        
+        % output dynamic networks
+        fdyn = fullfile(sdir, sprintf('%s_dynamic_networks_%s_%s.mat', subj, dtoken, con));
+        save(fdyn, 'nets_dyn', 'win_length', 'overlap', 'fdat');
       end
     end
   end
