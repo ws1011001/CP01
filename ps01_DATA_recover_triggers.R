@@ -23,7 +23,7 @@ wdir <- file.path(mdir,subj)
 frec <- sprintf('%s_ses-01_task-RS_run-01_events_recovered.csv',subj)
 # setup parameters
 blocks <- c(1,2,3,4,5)  # sub-04: c(2,3,4,5); sub-06: c(1,3,4,5)
-delay_limit <- 0.1    # in seconds
+delay_limit <- 0.8    # in seconds
 ## ---------------------------
 
 ## recover trigger for each block
@@ -56,21 +56,27 @@ for (i in 1:length(blocks)){
   ntrials <- dim(edat)[1]
   edat$delays <- rep(0,ntrials)
   edat$onsets_trigger <- rep(0,ntrials)
+  edat$recorded_trigger <- rep(0,ntrials) 
   edat$recovered_trigger <- rep(0,ntrials)
   for (j in 1:ntrials){
     jcond <- edat$conditions[j]
-    jtime <- edat$onsets_absolute[j]
-    jtrig <- which(triggers_working$conditions==jcond)[1]
+    jtime <- edat$onsets_absolute[j]  # E-prime timing
+    jtrig <- which(triggers_working$conditions == jcond)[1]
     if (!is.na(jtrig)){
-      jdelay <- triggers_working$onsets_absolute[jtrig]-jtime
+      jdelay <- triggers_working$onsets_absolute[jtrig] - jtime
       if (abs(jdelay) < delay_limit){
-        edat$delays[j] <- jdelay*1000  # in ms 
+        # correct E-prime timings according to this recorded trigger
+        edat$delays[j] <- jdelay*1000  # in ms
+        edat$onsets_absolute[j:ntrials] <- edat$onsets_absolute[j:ntrials] + jdelay
         edat$onsets_trigger[j] <- triggers_working$onsets[jtrig]
+        edat$recorded_trigger[j] <- 1
         triggers_working <- tail(triggers_working,-jtrig)
       } else {
+        # no recorded trigger
         edat$recovered_trigger[j] <- 1
       }
     } else {
+      # no recorded trigger
       edat$recovered_trigger[j] <- 1
     }
   }
@@ -85,7 +91,8 @@ for (i in 1:length(blocks)){
   delay_max <- max(abs(edat$delays))
   delay_sum <- sum(abs(edat$delays))
   delay_avg <- delay_sum/sum(edat$onsets_trigger != 0)
-  cat(sprintf('\nThe max, mean and summed delays of Block %g are : %f ms, %f ms, and %f ms.\n',ib,delay_max,delay_avg,delay_sum))
+  cat(sprintf('\nNr1 / Nr2 = %d / %d. The max, mean and summed delays of Block %g are : %f ms, %f ms, and %f ms.\n',
+              dim(triggers)[1], sum(edat$recorded_trigger), ib, delay_max, delay_avg, delay_sum))
   delays_recorded <- rbind(delays_recorded,edat[edat$onsets_trigger != 0,c('conditions','delays')])
   # combine triggers of all runs
   triggers_all <- rbind(triggers_all,edat[,c('conditions','onsets_trigger')])
@@ -94,7 +101,7 @@ for (i in 1:length(blocks)){
               row.names=FALSE,quote=FALSE,sep=',')
 }
 # output the complete timings for BST
-triggers_all$durations <- rep(0,dim(triggers_all)[1])
+#triggers_all$durations <- rep(0,dim(triggers_all)[1])
 write.table(triggers_all,file=file.path(wdir,frec),col.names=FALSE,row.names=FALSE,quote=FALSE,sep=',')
 write.table(delays_recorded,file=file.path(wdir,sprintf('%s_ses-01_task-RS_run-01_events_recovered-delays.csv',subj,ib)),
             row.names=FALSE,quote=FALSE,sep=',')
