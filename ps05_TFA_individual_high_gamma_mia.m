@@ -90,24 +90,24 @@ if isGetROIs
       mono_mni=readtable(fmni);
     end  
     mono_mni_xyz=[mono_mni.x mono_mni.y mono_mni.z];
-    % calculate the signals for each ROI
-    for icond=1:ncond
-      cdir=fullfile(sdir,conditions{icond});
-      fdat=fullfile(cdir,sprintf('%s_%s_%s_data_%d_%d_%d.mat',conditions{icond},mtg,tfa,freq_step,freq_lobd,freq_upbd));
-      data=load(fdat,'labels','zs','Time');
-      % get bipolar labels and coordinates
-      [bipo_mni, bipo_labels, bipo_flags]=mni_mono2bipolar(mono_mni_xyz, mono_mni.contacts, data.labels);
-      roi.bipolar_mni=bipo_mni;
-      roi.bipolar_contacts=bipo_labels;
-      roi.bipolar_flags=bipo_flags;
-      % get regions of interest
-      roi.AAL3=mni_find_regions(bipo_mni,'AAL3');
-      % get ROI-specific signals
-      roi.signals=roi_average_channels(data.zs(bipo_flags, :, :), bipo_mni, bipo_labels, roi.AAL3);
-      roi.time=data.Time;
-      % save ROI data
-      save(fdat,'roi','-append');
-    end
+%     % calculate the signals for each ROI
+%     for icond=1:ncond
+%       cdir=fullfile(sdir,conditions{icond});
+%       fdat=fullfile(cdir,sprintf('%s_%s_%s_data_%d_%d_%d.mat',conditions{icond},mtg,tfa,freq_step,freq_lobd,freq_upbd));
+%       data=load(fdat,'labels','zs','Time');
+%       % get bipolar labels and coordinates
+%       [bipo_mni, bipo_labels, bipo_flags]=mni_mono2bipolar(mono_mni_xyz, mono_mni.contacts, data.labels);
+%       roi.bipolar_mni=bipo_mni;
+%       roi.bipolar_contacts=bipo_labels;
+%       roi.bipolar_flags=bipo_flags;
+%       % get regions of interest
+%       roi.AAL3=mni_find_regions(bipo_mni,'AAL3');
+%       % get ROI-specific signals
+%       roi.signals=roi_average_channels(data.zs(bipo_flags, :, :), bipo_mni, bipo_labels, roi.AAL3);
+%       roi.time=data.Time;
+%       % save ROI data
+%       save(fdat,'roi','-append');
+%     end
   end
 end
 %% ---------------------------

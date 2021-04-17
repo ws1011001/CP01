@@ -28,9 +28,9 @@ framerate=5
 ## combine figures
 for dmode in ${dmodes[@]};do
   echo -e "Make frames for data modality : $dmode ......"
-  Adir = "$ddir/sub-08_dynamic_networks_language_${dmode}_Ap"
-  Vdir = "$ddir/sub-08_dynamic_networks_language_${dmode}_Vp"
-  Cdir = "$ddir/sub-08_dynamic_networks_language_${dmode}_Combined"
+  Adir="$ddir/sub-08_dynamic_networks_language_${dmode}_Ap"
+  Vdir="$ddir/sub-08_dynamic_networks_language_${dmode}_Vp"
+  Cdir="$ddir/sub-08_dynamic_networks_language_${dmode}_Combined"
   if [ ! -d $Cdir ];then mkdir -p $Cdir;fi
   for w in $windows;do
     echo -e "combine views for time-window $w."

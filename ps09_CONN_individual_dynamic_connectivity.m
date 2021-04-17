@@ -43,9 +43,18 @@ min_w=0.3;                              % min ICC to combine contacts
 win_noedges = [101 1100];               % time-window to remove wavelet edges (in samples)
 win_length = 50;
 overlap = 0.5;
+% graph metrics
+measures_global = {'density_LCC';'clustering';'transitivity';'local_efficiency';'global_efficiency';...
+                   'community_Q';'assortativity';'coreness';'core_size';'charpath_length';'radius';'diameter';...
+                   'routing_efficiency';'flow_coefficient'};
+measures_nodal = {'degrees';'clustering';'local_efficiency';'community_zscores';'community_participation';...
+                  'core_structure';'eccentricity';'routing_local_efficiency';'betweenness_centrality';...
+                  'eigenvector_centrality';'pagerank_centrality';'flow_coefficient';'flows_n'};
 % set switches
 isGetROIs=false;
-isDynConn=true;
+isDynConn=false;
+isStaComp=false;
+isVisualz=true;
 %% ---------------------------
 
 %% extract signals of ROIs
@@ -164,8 +173,8 @@ if isDynConn
         
         % normalize networks by using baseline norm
         nets_dyn = cat(4, nets_dyn{:});
-        nets_dyn_bl_mean = mean(nets_dyn(:, :, 1:10, :), 3);
-        nets_dyn_bl_std = std(nets_dyn(:, :, 1:10, :), [], 3);
+        nets_dyn_bl_mean = mean(nets_dyn(:, :, 1:11, :), 3);
+        nets_dyn_bl_std = std(nets_dyn(:, :, 1:11, :), [], 3);
         nets_dyn_norm = (nets_dyn - repmat(nets_dyn_bl_mean, 1, 1, 39, 1)) ./ repmat(nets_dyn_bl_std, 1, 1, 39, 1);
         nets_dyn_norm(isnan(nets_dyn_norm)) = 0;
         % confine networks to language system        
@@ -186,29 +195,110 @@ if isDynConn
           tic
           for itrial = 1:ntrials
             net_w = nets_lang(:, :, iwin, itrial);
-            net_b = threshold_proportional(net_w, 0.5);
+            net_b = threshold_proportional(net_w, 0.25);  % remain only 50%
             graph_measures{iwin, itrial} = metrics_basic_undirected_binary_networks(net_b);
           end
           toc
-        end
-        
-%         % plot averaged networks
-%         ndir = fullfile(sdir, 'Figures', sprintf('%s_dynamic_networks_language_%s_%s', subj, dtoken, con));
-%         if ~exist(ndir, 'dir'); mkdir(ndir); end         
-%         %cfg.range = [round(min(nonzeros(nets_lang_avg(:))), 2) round(max(nets_lang_avg(:)), 2)];
-%         cfg.range = [-0.5 0.5];
-%         cfg.colormap = parula(100);
-%         cfg.xticks = string(repmat({' '}, 1, size(nets_lang_avg, 1)));
-%         cfg.xticks(roi_vwfa) = 'vOT';
-%         cfg.yticks = cfg.xticks;
-%         for iwin = 1:nwin
-%           fnet = fullfile(ndir, sprintf('Network%02d.png', iwin));
-%           net_w = nets_lang_avg(:, :, iwin);
-%           plot_heatmap(net_w, fnet, cfg);
-%         end
+        end        
 
         % output the results
         save(flan, 'nets_*', 'avg_strength', 'avg_strength_vwfa', 'graph_measures');
+      end
+    end
+  end
+end
+%% ---------------------------
+
+%% statistical comparisons
+OPTIONS.nperm = 1000;
+OPTIONS.threshp = 0.05;
+OPTIONS.time = 1:39;
+OPTIONS.win_noedges = [10 39];
+conditions = {'Auditory', 'Visual'};
+vOT_idx = 5;
+if isStaComp
+  for i=1:n
+    subj=subjects{i};
+    sdir=fullfile(bdir,subj);
+    fprintf('Estimate dynamic connectivity for subject %s ......\n',subj);
+    % compare graph measures
+    load(fullfile(sdir,sprintf('%s_ROI-signals_working-files.mat',subj)));  % read working files
+    dtokens=fieldnames(working_files);
+    for j=1:length(dtokens)
+      dtoken=dtokens{j};
+      % read graph measures
+      fAp = fullfile(sdir, sprintf('%s_dynamic_networks_language_%s_Ap.mat', subj, dtoken));
+      fVp = fullfile(sdir, sprintf('%s_dynamic_networks_language_%s_Vp.mat', subj, dtoken));
+      data_Ap = load(fAp, 'graph_measures');
+      data_Vp = load(fVp, 'graph_measures');
+      % compare gloabl measures
+      for iglobal = 1:length(measures_global)
+        mtoken = measures_global{iglobal};
+        fprintf('Perform permutation tests on global measure %s of %s data ......\n', mtoken, dtoken);
+        signals_Ap.(dtoken).avg = cell2mat(cellfun(@(x) x.graph.(mtoken), data_Ap.graph_measures, 'UniformOutput', 0));
+        signals_Vp.(dtoken).avg = cell2mat(cellfun(@(x) x.graph.(mtoken), data_Vp.graph_measures, 'UniformOutput', 0));
+        gta_perm.(dtoken).graph.(mtoken) = roi_stats_permutations(signals_Ap, signals_Vp, OPTIONS);
+        clear signals_Ap signals_Vp
+        % output results
+        OPTIONS.ylab1 = mtoken;
+        OPTIONS.outputdir = fullfile(sdir, 'Figures/graph_measures/graph', mtoken);
+        if ~exist(OPTIONS.outputdir, 'dir'); mkdir(OPTIONS.outputdir); end
+        roi_plot_conditions(gta_perm.(dtoken).graph.(mtoken), conditions, OPTIONS);
+      end
+      % compare nodal (vOT) measures
+      for inodal = 1:length(measures_nodal)
+        mtoken = measures_nodal{inodal};
+        fprintf('Perform permutation tests on nodal measure %s of %s data ......\n', mtoken, dtoken);
+        signals_Ap.(dtoken).avg = cell2mat(cellfun(@(x) x.node.(mtoken)(vOT_idx), data_Ap.graph_measures, 'UniformOutput', 0));
+        signals_Vp.(dtoken).avg = cell2mat(cellfun(@(x) x.node.(mtoken)(vOT_idx), data_Vp.graph_measures, 'UniformOutput', 0));
+        gta_perm.(dtoken).node.(mtoken) = roi_stats_permutations(signals_Ap, signals_Vp, OPTIONS);
+        clear signals_Ap signals_Vp
+        % output results
+        OPTIONS.ylab1 = mtoken;
+        OPTIONS.outputdir = fullfile(sdir, 'Figures/graph_measures/node_vOT', mtoken);
+        if ~exist(OPTIONS.outputdir, 'dir'); mkdir(OPTIONS.outputdir); end
+        roi_plot_conditions(gta_perm.(dtoken).node.(mtoken), conditions, OPTIONS);
+      end      
+    end
+    % output comparison results
+    fcom = fullfile(sdir, sprintf('%s_dynamic_networks_language_stats-perm-T_Ap-Vp_graph_measures.mat', subj));
+    save(fcom, 'gta_perm', 'OPTIONS', 'conditions');
+  end
+end
+%% ---------------------------
+
+%% visualize results
+conditions = {'Ap', 'Vp'};
+if isVisualz
+  for i=1:n
+    subj=subjects{i};
+    sdir=fullfile(bdir,subj);
+    fprintf('Visualize results for subject %s ......\n',subj);
+    % read results
+    load(fullfile(sdir,sprintf('%s_ROI-signals_working-files.mat',subj)));  % read working files
+    dtokens=fieldnames(working_files);
+    for j=1:length(dtokens)
+      dtoken=dtokens{j};
+      for icond=1:ncond
+        con=conditions{icond};
+        flan = fullfile(sdir, sprintf('%s_dynamic_networks_language_%s_%s.mat', subj, dtoken, con)); 
+        load(flan, 'nets_lang_avg');
+        % plot averaged networks
+        ndir = fullfile(sdir, 'Figures', sprintf('%s_dynamic_networks_language_%s_%s', subj, dtoken, con));
+        if ~exist(ndir, 'dir'); mkdir(ndir); end         
+        %cfg.range = [round(min(nonzeros(nets_lang_avg(:))), 2) round(max(nets_lang_avg(:)), 2)];
+        cfg.range = [-0.5 0.5];
+        cfg.colormap = parula(100);
+        %cfg.xticks = string(repmat({' '}, 1, size(nets_lang_avg, 1)));
+        %cfg.xticks(vOT_idx) = 'vOT';
+        %cfg.yticks = cfg.xticks;
+        nwin = size(nets_lang_avg, 3);
+        for iwin = 1:nwin
+          fnet = fullfile(ndir, sprintf('Network%02d.png', iwin));
+          cfg.title = sprintf('Time-window %d : %d to %d ms', iwin, 25 * (iwin - 1) -300, 25 * (iwin - 1) -250);
+          net_w = nets_lang_avg(:, :, iwin);
+          plot_heatmap(net_w, fnet, cfg);
+        end        
       end
     end
   end
