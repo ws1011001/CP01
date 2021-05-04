@@ -17,12 +17,12 @@ rm(list=ls())
 
 ## set environment (packages, functions, working path etc.)
 # setup working path
-subj <- 'sub-07'
+subj <- 'sub-test'
 mdir <- '/media/wang/BON/Projects/CP01/SEEG_LectureVWFA/sourcedata/eprime_logs'
 wdir <- file.path(mdir,subj)
 frec <- sprintf('%s_ses-01_task-RS_run-01_events_recovered.csv',subj)
 # setup parameters
-blocks <- c(1,2,3,4,5)  # sub-04: c(2,3,4,5); sub-06: c(1,3,4,5)
+blocks <- c(1)  # sub-04: c(2,3,4,5); sub-06: c(1,3,4,5)
 delay_limit <- 0.8    # in seconds
 ## ---------------------------
 
@@ -67,7 +67,7 @@ for (i in 1:length(blocks)){
       if (abs(jdelay) < delay_limit){
         # correct E-prime timings according to this recorded trigger
         edat$delays[j] <- jdelay*1000  # in ms
-        edat$onsets_absolute[j:ntrials] <- edat$onsets_absolute[j:ntrials] + jdelay
+        #edat$onsets_absolute[j:ntrials] <- edat$onsets_absolute[j:ntrials] + jdelay
         edat$onsets_trigger[j] <- triggers_working$onsets[jtrig]
         edat$recorded_trigger[j] <- 1
         triggers_working <- tail(triggers_working,-jtrig)
