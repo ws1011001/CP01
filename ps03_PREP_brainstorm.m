@@ -33,12 +33,14 @@ subjects_info = readtable(fullfile(wdir, 'participants.tsv'), 'FileType', 'text'
 % set processing parameters
 notch_fliters = [50, 100, 150, 200, 250];
 freq_highpass = 0.3;  % 0.3 Hz recommended by AnneSo
-freq_lowpass = 40;    % 40 Hz low-pass for ERP analysis
-timewindow.prime = [-0.4, 0.8];  % epoch window for prime trials
-events.merge_primes_erp = [{'AAp, AVp', 'ERP_Ap'}; {'VVp, VAp', 'ERP_Vp'}];  % ERPs below 40 Hz
-events.merge_primes_hga = [{'AAp, AVp', 'HGA_Ap'}; {'VVp, VAp', 'HGA_Vp'}];  % high-gamma activity above 40 Hz
-events.primes_erp = 'ERP_Ap, ERP_Vp';
-events.primes_hga = 'HGA_Ap, HGA_Vp';
+freq_lowpass = 300;   % to avoid aliasing effects
+timewindow.prime = [-0.4 0.8];       % epoch window for prime trials
+timewindow.repetition = [-0.3 0.7];  % epoch window for repetition trials
+baseline.prime = [-0.4 0.01];        % baseline window for prime trials
+baseline.repetition = [-0.3 0.01];   % baseline window for repetition trials
+events.merge_primes = [{'AAp, AVp', 'Ap'}; {'VVp, VAp', 'Vp'}];  % auditory and visual prime trials
+events.primes = 'Ap, Vp';
+events.repetitions = 'AAp, AAt, AVp, AVt, VAp, VAt, VVp, VVt';
 %% ---------------------------
 
 %% import raw data
@@ -76,12 +78,8 @@ end
 %% ---------------------------
 
 %% band-pass
-fprintf('Perform band-pass filtering on the data \n');
-% high-pass filter - 0.3 Hz
-sFiles.highpass = bst_process('CallProcess', 'process_bandpass', sFiles.notch, [], 'sensortypes', 'SEEG', ...
-                              'highpass', freq_highpass, 'lowpass', 0, 'tranband', 0, 'attenuation', 'strict', ...  % 60dB
-                              'ver', '2019', 'mirror', 0, 'read_all', 0);
-% band-pass filters - 0.3 Hz to 40 Hz (for ERPs only)
+fprintf('Apply band-pass filtering (%d - %d Hz) on the data \n', freq_highpass, freq_lowpass);
+% band-pass filters
 sFiles.bandpass = bst_process('CallProcess', 'process_bandpass', sFiles.notch, [], 'sensortypes', 'SEEG', ...
                               'highpass', freq_highpass, 'lowpass', freq_lowpass, 'tranband', 0, 'attenuation', 'strict', ...  % 60dB
                               'ver', '2019', 'mirror', 0, 'read_all', 0);
@@ -89,25 +87,20 @@ sFiles.bandpass = bst_process('CallProcess', 'process_bandpass', sFiles.notch, [
 
 %% manipulate events
 % merge prime trials
-for i = 1:length(events.merge_primes_erp)
-  % HGA
-  bst_process('CallProcess', 'process_evt_merge', sFiles.highpass, [], ...
-              'evtnames', events.merge_primes_hga{i, 1}, 'newname', events.merge_primes_hga{i, 2});
-  % ERP
-  bst_process('CallProcess', 'process_evt_merge', sFiles.bandpass, [], ...
-              'evtnames', events.merge_primes_erp{i, 1}, 'newname', events.merge_primes_erp{i, 2});
+for i = 1:length(events.merge_primes)
+  bst_process('CallProcess', 'process_evt_merge', sFiles.bandpass, [], 'evtnames', events.merge_primes{i, 1}, 'newname', events.merge_primes{i, 2});
 end
 %% ---------------------------
 
 %% epoch
-% prime trials
-trials.primes_hga = bst_process('CallProcess', 'process_import_data_event', sFiles.highpass, [], 'subjectname', '', ...
-                                'condition', '', 'eventname', events.primes_hga, 'timewindow', [], 'epochtime', timewindow.prime, ...
-                                'createcond', 1, 'ignoreshort', 0, 'usectfcomp', 0, 'usessp', 0, 'freq', [], 'baseline', []);  
-trials.primes_erp = bst_process('CallProcess', 'process_import_data_event', sFiles.bandpass, [], 'subjectname', '', ...
-                                'condition', '', 'eventname', events.primes_erp, 'timewindow', [], 'epochtime', timewindow.prime, ...
-                                'createcond', 1, 'ignoreshort', 0, 'usectfcomp', 0, 'usessp', 0, 'freq', [], 'baseline', []);              
+% prime trials 
+trials.primes = bst_process('CallProcess', 'process_import_data_event', sFiles.bandpass, [], 'subjectname', '', ...
+                            'condition', '', 'eventname', events.primes, 'timewindow', [], 'epochtime', timewindow.prime, ...
+                            'createcond', 1, 'ignoreshort', 0, 'usectfcomp', 0, 'usessp', 0, 'freq', [], 'baseline', []);              
 % repetition trials
+trials.repetitions = bst_process('CallProcess', 'process_import_data_event', sFiles.bandpass, [], 'subjectname', '', ...
+                                 'condition', '', 'eventname', events.repetitions, 'timewindow', [], 'epochtime', timewindow.repetition, ...
+                                 'createcond', 1, 'ignoreshort', 0, 'usectfcomp', 0, 'usessp', 0, 'freq', [], 'baseline', []);
 %% ---------------------------
 
 %% bipolar montage
@@ -115,14 +108,36 @@ for i =1:n
   subj = subjects{i};
   mont = sprintf('%s: SEEG (bipolar 2)[tmp]', subj);
   ftmp = fullfile(bdir, subj, sprintf('%s_%s_working-filenames.mat', subj, ptoken));
-  % group ERP and HGA trials
+  % group all conditions
   fprintf('Apply montage %s \n', mont);
-  tFiles = [{trials.primes_erp(ismember({trials.primes_erp.SubjectName}, subj)).FileName}, ...
-            {trials.primes_hga(ismember({trials.primes_hga.SubjectName}, subj)).FileName}];
-  tFiles = cellfun(@(x) fullfile(bdir, x), tFiles, 'UniformOutput', 0);
+  tFiles.primes = {trials.primes(ismember({trials.primes.SubjectName}, subj)).FileName};
+  tFiles.primes = cellfun(@(x) fullfile(bdir, x), tFiles.primes, 'UniformOutput', 0);
+  tFiles.repetitions = {trials.repetitions(ismember({trials.repetitions.SubjectName}, subj)).FileName};
+  tFiles.repetitions = cellfun(@(x) fullfile(bdir, x), tFiles.repetitions, 'UniformOutput', 0);
   % apply montage
-  mFiles = bst_process('CallProcess', 'process_montage_apply', tFiles, [], 'montage', mont, 'createchan', 1);
+  mFiles.primes = bst_process('CallProcess', 'process_montage_apply', tFiles.primes, [], 'montage', mont, 'createchan', 1);
+  mFiles.repetitions = bst_process('CallProcess', 'process_montage_apply', tFiles.repetitions, [], 'montage', mont, 'createchan', 1);
   % save working filenames
-  save(ftmp, 'tFiles', 'mFiles');
+  save(ftmp, 'tFiles', 'mFiles', 'mont', 'timewindow', 'baseline', 'events');
 end 
+%% ---------------------------
+
+%% baseline normalization
+for i =1:n
+  subj = subjects{i};
+  % read working filenames
+  ftmp = fullfile(bdir, subj, sprintf('%s_%s_working-filenames.mat', subj, ptoken));
+  load(ftmp);
+  mFiles.primes = cellfun(@(x) fullfile(bdir, x), {mFiles.primes.FileName}, 'UniformOutput', 0);
+  mFiles.repetitions = cellfun(@(x) fullfile(bdir, x), {mFiles.repetitions.FileName}, 'UniformOutput', 0);
+  % baseline normalization
+  bFiles.primes = bst_process('CallProcess', 'process_baseline_norm', mFiles.primes, [], 'baseline', baseline.primes, ...
+                              'sensortypes', 'SEEG', 'method', 'zscore', ...  % Z-score transformation: x_std = (x - mu) / sigma
+                              'overwrite', 0);  
+  bFiles.repetitions = bst_process('CallProcess', 'process_baseline_norm', mFiles.repetitions, [], 'baseline', baseline.repetition, ...
+                                   'sensortypes', 'SEEG', 'method', 'zscore', ...  % Z-score transformation: x_std = (x - mu) / sigma
+                                   'overwrite', 0);
+  % save working filenames
+  save(ftmp, 'bFiles', '-append');  % bFiles would be used for next analyses
+end
 %% ---------------------------
