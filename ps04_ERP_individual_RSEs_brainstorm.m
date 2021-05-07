@@ -39,6 +39,7 @@ fdr_duration = 20;  % duration (in ms) for FDR correction in the time domain
 %% ---------------------------
 
 %% perform permutation tests on individual ERPs
+ptoken = 'ses-01_task-RS_run-01_ieeg';  % raw data token
 for i = 1:n
   subj = subjects{i};
   % read working filenames
