@@ -127,11 +127,11 @@ for i =1:n
   subj = subjects{i};
   % read working filenames
   ftmp = fullfile(bdir, subj, sprintf('%s_%s_working-filenames.mat', subj, ptoken));
-  load(ftmp);
+  load(ftmp, 'mFiles');
   mFiles.primes = cellfun(@(x) fullfile(bdir, x), {mFiles.primes.FileName}, 'UniformOutput', 0);
   mFiles.repetitions = cellfun(@(x) fullfile(bdir, x), {mFiles.repetitions.FileName}, 'UniformOutput', 0);
   % baseline normalization
-  bFiles.primes = bst_process('CallProcess', 'process_baseline_norm', mFiles.primes, [], 'baseline', baseline.primes, ...
+  bFiles.primes = bst_process('CallProcess', 'process_baseline_norm', mFiles.primes, [], 'baseline', baseline.prime, ...
                               'sensortypes', 'SEEG', 'method', 'zscore', ...  % Z-score transformation: x_std = (x - mu) / sigma
                               'overwrite', 0);  
   bFiles.repetitions = bst_process('CallProcess', 'process_baseline_norm', mFiles.repetitions, [], 'baseline', baseline.repetition, ...
