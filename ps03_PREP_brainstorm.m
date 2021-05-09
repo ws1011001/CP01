@@ -31,20 +31,21 @@ subjects = subjects{1};  % the subjects list
 n = length(subjects);
 subjects_info = readtable(fullfile(wdir, 'participants.tsv'), 'FileType', 'text');
 % set processing parameters
+ptoken = 'ses-01_task-RS_run-01_ieeg';  % raw data token
 notch_fliters = [50, 100, 150, 200, 250];
 freq_highpass = 0.3;  % 0.3 Hz recommended by AnneSo
 freq_lowpass = 300;   % to avoid aliasing effects
 timewindow.prime = [-0.4 0.8];       % epoch window for prime trials
 timewindow.repetition = [-0.3 0.7];  % epoch window for repetition trials
-baseline.prime = [-0.4 0.01];        % baseline window for prime trials
-baseline.repetition = [-0.3 0.01];   % baseline window for repetition trials
+baseline.prime = [-0.4 0];        % baseline window for prime trials
+baseline.repetition = [-0.3 0];   % baseline window for repetition trials
+baseline_method = 'bl';  % DC offset correction:    x_std = x - &mu;
 events.merge_primes = [{'AAp, AVp', 'Ap'}; {'VVp, VAp', 'Vp'}];  % auditory and visual prime trials
 events.primes = 'Ap, Vp';
 events.repetitions = 'AAp, AAt, AVp, AVt, VAp, VAt, VVp, VVt';
 %% ---------------------------
 
 %% import raw data
-ptoken = 'ses-01_task-RS_run-01_ieeg';  % raw data token
 for i = 1:n
   subj = subjects{i};
   sidx = ismember(subjects_info.participant_id, subj);
@@ -132,12 +133,10 @@ for i =1:n
   mFiles.repetitions = cellfun(@(x) fullfile(bdir, x), {mFiles.repetitions.FileName}, 'UniformOutput', 0);
   % baseline normalization
   bFiles.primes = bst_process('CallProcess', 'process_baseline_norm', mFiles.primes, [], 'baseline', baseline.prime, ...
-                              'sensortypes', 'SEEG', 'method', 'zscore', ...  % Z-score transformation: x_std = (x - mu) / sigma
-                              'overwrite', 0);  
+                              'sensortypes', 'SEEG', 'method', baseline_method, 'overwrite', 0);  
   bFiles.repetitions = bst_process('CallProcess', 'process_baseline_norm', mFiles.repetitions, [], 'baseline', baseline.repetition, ...
-                                   'sensortypes', 'SEEG', 'method', 'zscore', ...  % Z-score transformation: x_std = (x - mu) / sigma
-                                   'overwrite', 0);
+                                   'sensortypes', 'SEEG', 'method', baseline_method, 'overwrite', 0);
   % save working filenames
-  save(ftmp, 'bFiles', '-append');  % bFiles would be used for next analyses
+  save(ftmp, 'bFiles', '-append');  % bFiles would be used for ERP analysis
 end
 %% ---------------------------
