@@ -18,6 +18,9 @@ clc
 %% ---------------------------
 
 %% set environment (packages, functions, working path etc.)
+% initialize brainsotrm
+brainstorm nogui   % starts the interface but hides it.
+%brainstorm server  % run on headless servers (computation clusters with no screen attached)
 % setup working path
 mdir = '/media/wang/BON/Projects/CP01';
 wdir = fullfile(mdir, 'SEEG_LectureVWFA');                     % main working folder 
@@ -32,9 +35,9 @@ n = length(subjects);
 subjects_info = readtable(fullfile(wdir, 'participants.tsv'), 'FileType', 'text');
 % set processing parameters
 ptoken = 'ses-01_task-RS_run-01_ieeg';  % raw data token
-notch_fliters = [50, 100, 150, 200, 250];
+notch_filters = [50, 100, 150, 200, 250];
 freq_highpass = 0.3;  % 0.3 Hz recommended by AnneSo
-freq_lowpass = 300;   % to avoid aliasing effects
+freq_lowpass = 0;     % 0 is disable
 timewindow.prime = [-0.4 0.8];       % epoch window for prime trials
 timewindow.repetition = [-0.3 0.7];  % epoch window for repetition trials
 baseline.prime = [-0.4 0];        % baseline window for prime trials
@@ -64,7 +67,7 @@ bst_process('CallProcess', 'process_psd', pFiles, [], 'timewindow', [], 'win_len
             'edit', struct('Comment', 'Power', 'TimeBands', [], 'Freqs', [], 'ClusterFuncTime', 'none', ...
             'Measure', 'power', 'Output', 'all', 'SaveKernel', 0));
 % notch filters (50, 100, 150, 200, 250Hz)
-sFiles.notch = bst_process('CallProcess', 'process_notch', pFiles, [], 'sensortypes', 'SEEG', 'freqlist', notch_fliters, ...
+sFiles.notch = bst_process('CallProcess', 'process_notch', pFiles, [], 'sensortypes', 'SEEG', 'freqlist', notch_filters, ...
                      'cutoffW', 2, 'useold', 0, 'read_all', 0);
 %% ---------------------------
 
@@ -102,6 +105,9 @@ trials.primes = bst_process('CallProcess', 'process_import_data_event', sFiles.b
 trials.repetitions = bst_process('CallProcess', 'process_import_data_event', sFiles.bandpass, [], 'subjectname', '', ...
                                  'condition', '', 'eventname', events.repetitions, 'timewindow', [], 'epochtime', timewindow.repetition, ...
                                  'createcond', 1, 'ignoreshort', 0, 'usectfcomp', 0, 'usessp', 0, 'freq', [], 'baseline', []);
+% save working filenames
+ftmp = fullfile(bdir, sprintf('ps03_PREP_%s.mat', datetime('now','Format', 'yyyy-MM-dd''T''HH:mm:SS')));
+save(ftmp, 'pFiles', 'sFiles', 'trials', 'subjects', 'n', 'notch_filters', 'freq_highpass', 'freq_lowpass', 'timewindow', 'baseline', 'events');
 %% ---------------------------
 
 %% bipolar montage
