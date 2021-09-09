@@ -34,18 +34,19 @@ subjects = subjects{1};  % the subjects list
 n = length(subjects);
 subjects_info = readtable(fullfile(wdir, 'participants.tsv'), 'FileType', 'text');
 % set processing parameters
-ptoken = 'ses-01_task-RS_run-01_ieeg';  % raw data token
-notch_filters = [50, 100, 150, 200, 250];
-freq_highpass = 0.3;  % 0.3 Hz recommended by AnneSo
-freq_lowpass = 0;     % 0 is disable
-timewindow.prime = [-0.4 0.8];       % epoch window for prime trials
-timewindow.repetition = [-0.3 0.7];  % epoch window for repetition trials
-baseline.prime = [-0.4 0];        % baseline window for prime trials
-baseline.repetition = [-0.3 0];   % baseline window for repetition trials
-baseline_method = 'bl';  % DC offset correction:    x_std = x - &mu;
-events.merge_primes = [{'AAp, AVp', 'Ap'}; {'VVp, VAp', 'Vp'}];  % auditory and visual prime trials
+ptoken = 'ses-01_task-RS_run-01_ieeg';     % raw data token
+notch_filters = [50, 100, 150, 200, 250];  % notch frequencies in Hz
+freq_highpass = 0.3;                       % 0.3 Hz recommended by AnneSo
+freq_lowpass = 0;                          % 0 means disable
+timewindow.prime = [-0.4 0.8];             % epoch window for prime trials
+timewindow.repetition = [-0.3 0.7];        % epoch window for repetition trials
+baseline.prime = [-0.4 0];                 % baseline window for prime trials
+baseline.repetition = [-0.3 0];            % baseline window for repetition trials
+baseline_method = 'bl';                    % DC offset correction: x_std = x - u;
+% manipulation of conditions
+events.repetitions = 'AAp, AAt, AVp, AVt, VAp, VAt, VVp, VVt';   % original eight RSE conditions
+events.merge_primes = [{'AAp, AVp', 'Ap'}; {'VVp, VAp', 'Vp'}];  % merge AAp and AVp as Ap (auditory prime trials), do the same for visual trials
 events.primes = 'Ap, Vp';
-events.repetitions = 'AAp, AAt, AVp, AVt, VAp, VAt, VVp, VVt';
 %% ---------------------------
 
 %% import raw data
@@ -68,7 +69,7 @@ bst_process('CallProcess', 'process_psd', pFiles, [], 'timewindow', [], 'win_len
             'Measure', 'power', 'Output', 'all', 'SaveKernel', 0));
 % notch filters (50, 100, 150, 200, 250Hz)
 sFiles.notch = bst_process('CallProcess', 'process_notch', pFiles, [], 'sensortypes', 'SEEG', 'freqlist', notch_filters, ...
-                     'cutoffW', 2, 'useold', 0, 'read_all', 0);
+                           'cutoffW', 2, 'useold', 0, 'read_all', 0);
 %% ---------------------------
 
 %% import recovered/double-checked events
@@ -105,7 +106,7 @@ trials.primes = bst_process('CallProcess', 'process_import_data_event', sFiles.b
 trials.repetitions = bst_process('CallProcess', 'process_import_data_event', sFiles.bandpass, [], 'subjectname', '', ...
                                  'condition', '', 'eventname', events.repetitions, 'timewindow', [], 'epochtime', timewindow.repetition, ...
                                  'createcond', 1, 'ignoreshort', 0, 'usectfcomp', 0, 'usessp', 0, 'freq', [], 'baseline', []);
-% save working filenames
+% save working filepaths and parameters
 ftmp = fullfile(bdir, sprintf('ps03_PREP_%s.mat', datetime('now','Format', 'yyyy-MM-dd''T''HH:mm:SS')));
 save(ftmp, 'pFiles', 'sFiles', 'trials', 'subjects', 'n', 'notch_filters', 'freq_highpass', 'freq_lowpass', 'timewindow', 'baseline', 'events');
 %% ---------------------------
@@ -121,7 +122,7 @@ for i =1:n
   tFiles.primes = cellfun(@(x) fullfile(bdir, x), tFiles.primes, 'UniformOutput', 0);
   tFiles.repetitions = {trials.repetitions(ismember({trials.repetitions.SubjectName}, subj)).FileName};
   tFiles.repetitions = cellfun(@(x) fullfile(bdir, x), tFiles.repetitions, 'UniformOutput', 0);
-  % apply montage
+  % apply montage (m)
   mFiles.primes = bst_process('CallProcess', 'process_montage_apply', tFiles.primes, [], 'montage', mont, 'createchan', 1);
   mFiles.repetitions = bst_process('CallProcess', 'process_montage_apply', tFiles.repetitions, [], 'montage', mont, 'createchan', 1);
   % save working filenames
@@ -137,7 +138,7 @@ for i =1:n
   load(ftmp, 'mFiles');
   mFiles.primes = cellfun(@(x) fullfile(bdir, x), {mFiles.primes.FileName}, 'UniformOutput', 0);
   mFiles.repetitions = cellfun(@(x) fullfile(bdir, x), {mFiles.repetitions.FileName}, 'UniformOutput', 0);
-  % baseline normalization
+  % baseline normalization (b)
   bFiles.primes = bst_process('CallProcess', 'process_baseline_norm', mFiles.primes, [], 'baseline', baseline.prime, ...
                               'sensortypes', 'SEEG', 'method', baseline_method, 'overwrite', 0);  
   bFiles.repetitions = bst_process('CallProcess', 'process_baseline_norm', mFiles.repetitions, [], 'baseline', baseline.repetition, ...
