@@ -20,12 +20,12 @@ clc
 %% set environment (packages, functions, working path etc.)
 % setup working path
 mdir = '/media/wang/BON/Projects/CP01';
-ddir = fullfile(mdir,'SEEG_LectureVWFA','derivatives');      % derivatives in the BIDS structure
-bdir = fullfile(ddir,'brainstorm_SEEG_LectureVWFA','data');  % path to brainsotrm database
-vdir = fullfile(mdir, 'manuscript', 'visualization');        % path to save images
+ddir = fullfile(mdir, 'SEEG_LectureVWFA', 'derivatives');      % derivatives in the BIDS structure
+bdir = fullfile(ddir, 'brainstorm_SEEG_LectureVWFA', 'data');  % path to brainsotrm database
+vdir = fullfile(mdir, 'results', 'visualization');             % path to save images
 % read the subjects list
-fid = fopen(fullfile(mdir,'CP01_subjects.txt'));
-subjects = textscan(fid,'%s');
+fid = fopen(fullfile(mdir, 'CP01_subjects.txt'));
+subjects = textscan(fid, '%s');
 fclose(fid);
 subjects = subjects{1};  % the subjects list
 n = length(subjects);
@@ -35,17 +35,25 @@ montagetype = 'bipolar_2';
 conditions = {'AAp', 'AAt', 'AVp', 'AVt', 'VAp', 'VAt', 'VVp', 'VVt', 'Ap', 'Vp'};
 condtype = [repmat({'repetition'}, 1, 8), repmat({'prime'}, 1, 2)];
 ncond = length(conditions);
-contrasts = {'AAp2AAt', 'AVp2AVt', 'VAp2VAt', 'VVp2VVt'};
+contrasts = {'AAp2AAt', 'AVp2AVt', 'VAp2VAt', 'VVp2VVt'};  % RSE contrasts
 nperm = 5000;       % the number of randomizations in permutation tests
 fdr_p = 0.05;       % alpha level
 fdr_duration = 20;  % duration (in ms) for FDR correction in the time domain
+% figure settings
+OPTIONS.fontsize  = 18;
+OPTIONS.linewidth = 2;
+OPTIONS.smoothing = 1;
+OPTIONS.xscale    = 0.1;
+OPTIONS.legend    = 'far-left';
+OPTIONS.sigbar    = false;
 % set switches
-isTests = true;
-isPlots = true;
+isAllTests = false;  % do statistical tests for all conditions and contrasts
+isPlotPrim = true;  % plot time-courses for (auditory and visual) prime conditions 
+isPlotRSEs = false;  % plot ERPs for RSE contrasts
 %% ---------------------------
 
 %% perform permutation tests on individual ERPs
-if isTests
+if isAllTests
   for i = 1:n
     subj = subjects{i};
     % read working filenames
@@ -103,19 +111,56 @@ if isTests
 end
 %% ---------------------------
 
+%% visualize ERPs for auditory and visual prime conditions
+if isPlotPrim
+  conditions = {'Ap', 'Vp'};
+  ncond = length(conditions);
+  for i = 1:n
+    subj = subjects{i};
+    sdir = fullfile(vdir, 'timecourse_ERPs', subj, 'Prime');
+    if ~exist(sdir, 'dir'); mkdir(sdir); end    
+    % read working filenames
+    ftmp = fullfile(bdir, subj, sprintf('%s_%s_working-filenames.mat', subj, ptoken));  
+    load(ftmp)
+    % combine ERPs average and variations
+    COIs = [];  % consider all channels
+    for icond = 1:ncond
+      cndt = conditions{icond};
+      davg = load(fullfile(bdir, ERPs.(cndt).favg.FileName), 'F', 'Time');
+      dstd = load(fullfile(bdir, ERPs.(cndt).fstd.FileName), 'F');
+      dste = load(fullfile(bdir, ERPs.(cndt).fste.FileName), 'F');
+      % extrat ERP signals
+      signals.(cndt).avg = davg.F;
+      signals.(cndt).std = dstd.F;
+      signals.(cndt).ste = dste.F;
+      OPTIONS.Time = davg.Time;  % in seconds
+    end
+    % plot ERPs for auditory prime
+    ftoken = fullfile(sdir, sprintf('%s_ERPs-Ap', subj));
+    cont_signals = signals.Ap.avg .* 1e6;
+    cont_stderrs = signals.Ap.ste .* 1e6;
+    cont_tvals = load(fullfile(bdir, ERPs.Ap.ftest_fdr.FileName), 'F');
+    channels = load(fullfile(bdir, ERPs.Ap.ftest_fdr.ChannelFile), 'Channel');
+    plot_ERPs(cont_signals, cont_stderrs, cont_tvals.F, {'Auditory prime (N=100)'}, channels.Channel, COIs, OPTIONS, ftoken);
+    % plot ERPs for visual prime
+    ftoken = fullfile(sdir, sprintf('%s_ERPs-Vp', subj));
+    cont_signals = signals.Vp.avg .* 1e6;
+    cont_stderrs = signals.Vp.ste .* 1e6;
+    cont_tvals = load(fullfile(bdir, ERPs.Vp.ftest_fdr.FileName), 'F');
+    channels = load(fullfile(bdir, ERPs.Vp.ftest_fdr.ChannelFile), 'Channel');
+    plot_ERPs(cont_signals, cont_stderrs, cont_tvals.F, {'Visual prime (N=100)'}, channels.Channel, COIs, OPTIONS, ftoken);
+  end  
+end
+%% ---------------------------
+
 %% visualize ERPs for each contrast
-if isPlots
+if isPlotRSEs
   conditions = {'AAp', 'AAt', 'AVp', 'AVt', 'VAp', 'VAt', 'VVp', 'VVt'};
   ncond = length(conditions);
-  % figure settings
-  OPTIONS = [];
-  OPTIONS.fontsize = 18;
-  OPTIONS.linewidth = 2;
-  OPTIONS.smoothing = 1;
-  OPTIONS.xscale = 0.1;
-  OPTIONS.legend = 'far-left';
   for i=1:n
     subj=subjects{i};
+    sdir = fullfile(vdir, 'timecourse_ERPs', subj, 'RSEs');
+    if ~exist(sdir, 'dir'); mkdir(sdir); end    
     % read working filenames
     ftmp = fullfile(bdir, subj, sprintf('%s_%s_working-filenames.mat', subj, ptoken));  
     load(ftmp)
@@ -136,8 +181,6 @@ if isPlots
       OPTIONS.Time = davg.Time;  % in seconds
     end
     % plot ERPs for the contrast AAp vs. AAt
-    sdir = fullfile(vdir, 'timecourse_ERPs', subj);
-    if ~exist(sdir, 'dir'); mkdir(sdir); end
     ftoken = fullfile(sdir, sprintf('%s_ERPs-RSE-AAp2AAt', subj));
     cont_signals = cat(3, signals.AAp.avg, signals.AAt.avg) .* 1e6;
     cont_stderrs = cat(3, signals.AAp.ste, signals.AAt.ste) .* 1e6;
@@ -145,8 +188,6 @@ if isPlots
     channels = load(fullfile(bdir, ERPs.perm.AAp2AAt_fdr.ChannelFile), 'Channel');
     plot_ERPs(cont_signals, cont_stderrs, cont_tvals.F, {'Auditory prime (N=50)', 'Auditory target (N=50)'}, channels.Channel, COIs, OPTIONS, ftoken)
     % plot ERPs for the contrast VVp vs. VVt
-    sdir = fullfile(vdir, 'timecourse_ERPs', subj);
-    if ~exist(sdir, 'dir'); mkdir(sdir); end
     ftoken = fullfile(sdir, sprintf('%s_ERPs-RSE-VVp2VVt', subj));
     cont_signals = cat(3, signals.VVp.avg, signals.VVt.avg) .* 1e6;
     cont_stderrs = cat(3, signals.VVp.ste, signals.VVt.ste) .* 1e6;
@@ -154,8 +195,6 @@ if isPlots
     channels = load(fullfile(bdir, ERPs.perm.VVp2VVt_fdr.ChannelFile), 'Channel');
     plot_ERPs(cont_signals, cont_stderrs, cont_tvals.F, {'Visual prime (N=50)', 'Visual target (N=50)'}, channels.Channel, COIs, OPTIONS, ftoken);      
     % plot ERPs for the contrast AVp vs. AVt
-    sdir = fullfile(vdir, 'timecourse_ERPs', subj);
-    if ~exist(sdir, 'dir'); mkdir(sdir); end
     ftoken = fullfile(sdir, sprintf('%s_ERPs-RSE-AVp2AVt', subj));
     cont_signals = cat(3, signals.AVp.avg, signals.AVt.avg) .* 1e6;
     cont_stderrs = cat(3, signals.AVp.ste, signals.AVt.ste) .* 1e6;
@@ -163,8 +202,6 @@ if isPlots
     channels = load(fullfile(bdir, ERPs.perm.AVp2AVt_fdr.ChannelFile), 'Channel');
     plot_ERPs(cont_signals, cont_stderrs, cont_tvals.F, {'Auditory prime (N=50)', 'Visual target (N=50)'}, channels.Channel, COIs, OPTIONS, ftoken);
     % plot ERPs for the contrast VAp vs. VAt
-    sdir = fullfile(vdir, 'timecourse_ERPs', subj);
-    if ~exist(sdir, 'dir'); mkdir(sdir); end
     ftoken = fullfile(sdir, sprintf('%s_ERPs-RSE-VAp2VAt', subj));
     cont_signals = cat(3, signals.VAp.avg, signals.VAt.avg) .* 1e6;
     cont_stderrs = cat(3, signals.VAp.ste, signals.VAt.ste) .* 1e6;

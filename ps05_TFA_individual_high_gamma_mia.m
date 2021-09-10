@@ -48,7 +48,7 @@ mdir = '/media/wang/BON/Projects/CP01';
 ddir = fullfile(mdir,'SEEG_LectureVWFA','derivatives');  % derivatives in the BIDS structure
 bdir = fullfile(ddir,'mia_SEEG_LectureVWFA');            % path to brainsotrm database
 % read the subjects list
-fid = fopen(fullfile(mdir,'CP01_subjects.txt'));
+fid = fopen(fullfile(mdir,'CP01_subjects_03.txt'));
 subjects = textscan(fid,'%s');
 fclose(fid);
 subjects = subjects{1};  % the subjects list
@@ -57,7 +57,7 @@ n = length(subjects);
 mtg = 'bipolar';  % montage
 tfa = 'morlet';   % time-frequency analysis
 freq_step = 10;
-freq_lobd = 40;
+freq_lobd = 80;
 freq_upbd = 150;
 ptoken = sprintf('%s_%s_data_%d_%d_%d', mtg, tfa, freq_step, freq_lobd, freq_upbd);
 OPTIONS.nperm = 5000;
@@ -114,16 +114,16 @@ if isCompChn
       zs = data.(cond_pair{1}).zs - data.(cond_pair{2}).zs;
       save(fpair, 'zbaseline', 'freqb', 'Time', 'labels', 'history', 'F', 'zs');
       clear('zbaseline', 'freqb', 'Time', 'labels', 'history', 'F', 'zs');
-      % two-sample permutation test            
-      fperm = fullfile(rdir, sprintf('stats-perm2_%s-%s_%s.mat', cond_pair{1}, cond_pair{2}, ptoken));
-      if ~exist(fperm, 'file')
-        chn_perm = roi_stats_permutations(signals.(cond_pair{1}), signals.(cond_pair{2}), OPTIONS);
-        save(fperm, 'chn_perm');
-      else
-        load(fperm, 'chn_perm');
-      end     
-      OPTIONS.outputdir = rdir;
-      roi_plot_conditions(chn_perm, cond_pair, OPTIONS);  % plot only significant results
+%       % two-sample permutation test            
+%       fperm = fullfile(rdir, sprintf('stats-perm2_%s-%s_%s.mat', cond_pair{1}, cond_pair{2}, ptoken));
+%       if ~exist(fperm, 'file')
+%         chn_perm = roi_stats_permutations(signals.(cond_pair{1}), signals.(cond_pair{2}), OPTIONS);
+%         save(fperm, 'chn_perm');
+%       else
+%         load(fperm, 'chn_perm');
+%       end     
+%       OPTIONS.outputdir = rdir;
+%       roi_plot_conditions(chn_perm, cond_pair, OPTIONS);  % plot only significant results
     end     
   end
 end
