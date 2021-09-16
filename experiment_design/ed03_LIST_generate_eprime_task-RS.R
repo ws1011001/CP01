@@ -279,3 +279,45 @@ for (k in 1:5){
   }
   write.csv(blk.table,file=sprintf('Eprime_RSE_Block%d_wAUDduration.csv',k),row.names=FALSE,quote=FALSE)
 }
+
+# generate expected E-prime timings
+rm(list=ls())
+mdir <- '/media/wang/BON/Projects/CP01/experiment_design/'
+blocks <- c(1,2,3,4,5)
+dur_vis <- 550  # in ms
+for (i in 1:length(blocks)){
+  # read design
+  fblk <- file.path(mdir,sprintf('task-RS_Eprime-list-v4_block-%02d.csv',i))
+  dblk <- read.csv(fblk, stringsAsFactors = FALSE)
+  ntrials <- dim(dblk)[1]
+  # calculate expected timings in E-prime
+  edat <- data.frame(Trial = double(ntrials), Condition = character(ntrials), FixationCross.OnsetTime = double(ntrials),
+                     RSE = character(ntrials), StimAud.OnsetTime = double(ntrials), StimVDO.OnsetTime = double(ntrials),
+                     StimVis.OnsetTime = double(ntrials), Trigger = double(ntrials), stringsAsFactors = FALSE) 
+  onset <- 0  # in ms
+  for (itrial in 1:ntrials){
+    # stimulus onset
+    if (!is.na(dblk$VDOduration[itrial])){
+      edat$StimVDO.OnsetTime[itrial] <- onset
+      onset <- onset + dblk$VDOduration[itrial]
+    } else if (!is.na(dblk$AUDduration[itrial])){
+      edat$StimAud.OnsetTime[itrial] <- onset
+      onset <- onset + dblk$AUDduration[itrial]
+    } else {
+      edat$StimVis.OnsetTime[itrial] <- onset
+      onset <- onset + dur_vis
+    }
+    # fixation onset
+    edat$FixationCross.OnsetTime[itrial] <- onset
+    # next stimulus onset
+    onset <- onset + dblk$Jitter[itrial]
+    # other info
+    edat$Trial[itrial] <- itrial
+    edat$Condition[itrial] <- dblk$Condition[itrial]
+    edat$RSE[itrial] <- dblk$RSE[itrial]
+    edat$Trigger[itrial] <- dblk$Trigger[itrial]
+  }
+  # output E-prime list
+  fepl <- file.path(mdir, sprintf('sub-xx_ses-01_task-RS_run-01_block-%02d_edat.txt', i))
+  write.table(edat, file=fepl, sep='\t', row.names=FALSE, quote=FALSE, fileEncoding = 'UTF-16')
+}
