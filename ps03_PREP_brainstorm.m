@@ -111,22 +111,26 @@ ftmp = fullfile(bdir, sprintf('ps03_PREP_%s.mat', datetime('now','Format', 'yyyy
 save(ftmp, 'pFiles', 'sFiles', 'trials', 'subjects', 'n', 'notch_filters', 'freq_highpass', 'freq_lowpass', 'timewindow', 'baseline', 'events');
 %% ---------------------------
 
-%% bipolar montage
+%% monopolar and bipolar montages
 for i =1:n
   subj = subjects{i};
-  mont = sprintf('%s: SEEG (bipolar 2)[tmp]', subj);
+  mon1 = sprintf('%s: SEEG (orig)[tmp]', subj);       % monopolar
+  mon2 = sprintf('%s: SEEG (bipolar 2)[tmp]', subj);  % bipolar2
   ftmp = fullfile(bdir, subj, sprintf('%s_%s_working-filenames.mat', subj, ptoken));
   % group all conditions
-  fprintf('Apply montage %s \n', mont);
+  fprintf('Apply montage %s and %s \n', mon1, mon2);
   tFiles.primes = {trials.primes(ismember({trials.primes.SubjectName}, subj)).FileName};
   tFiles.primes = cellfun(@(x) fullfile(bdir, x), tFiles.primes, 'UniformOutput', 0);
   tFiles.repetitions = {trials.repetitions(ismember({trials.repetitions.SubjectName}, subj)).FileName};
   tFiles.repetitions = cellfun(@(x) fullfile(bdir, x), tFiles.repetitions, 'UniformOutput', 0);
-  % apply montage (m)
-  mFiles.primes = bst_process('CallProcess', 'process_montage_apply', tFiles.primes, [], 'montage', mont, 'createchan', 1);
-  mFiles.repetitions = bst_process('CallProcess', 'process_montage_apply', tFiles.repetitions, [], 'montage', mont, 'createchan', 1);
+  % apply monopolar montage
+  nFiles.primes = bst_process('CallProcess', 'process_montage_apply', tFiles.primes, [], 'montage', mon1, 'createchan', 1);
+  nFiles.repetitions = bst_process('CallProcess', 'process_montage_apply', tFiles.repetitions, [], 'montage', mon1, 'createchan', 1);  
+  % apply bipolar2 montage (m)
+  mFiles.primes = bst_process('CallProcess', 'process_montage_apply', tFiles.primes, [], 'montage', mon2, 'createchan', 1);
+  mFiles.repetitions = bst_process('CallProcess', 'process_montage_apply', tFiles.repetitions, [], 'montage', mon2, 'createchan', 1);
   % save working filenames
-  save(ftmp, 'tFiles', 'mFiles', 'mont', 'timewindow', 'baseline', 'events');
+  save(ftmp, 'tFiles', 'nFiles', 'mFiles', 'mon1', 'mon2', 'timewindow', 'baseline', 'events', '-append');
 end 
 %% ---------------------------
 
@@ -135,15 +139,22 @@ for i =1:n
   subj = subjects{i};
   % read working filenames
   ftmp = fullfile(bdir, subj, sprintf('%s_%s_working-filenames.mat', subj, ptoken));
-  load(ftmp, 'mFiles');
+  load(ftmp, 'nFiles', 'mFiles');
+  % baseline normalization for monopolar montage (n) 
+  nFiles.primes = cellfun(@(x) fullfile(bdir, x), {nFiles.primes.FileName}, 'UniformOutput', 0);
+  nFiles.repetitions = cellfun(@(x) fullfile(bdir, x), {nFiles.repetitions.FileName}, 'UniformOutput', 0);
+  oFiles.primes = bst_process('CallProcess', 'process_baseline_norm', nFiles.primes, [], 'baseline', baseline.prime, ...
+                              'sensortypes', 'SEEG', 'method', baseline_method, 'overwrite', 0);  
+  oFiles.repetitions = bst_process('CallProcess', 'process_baseline_norm', nFiles.repetitions, [], 'baseline', baseline.repetition, ...
+                                   'sensortypes', 'SEEG', 'method', baseline_method, 'overwrite', 0); 
+  % baseline normalization for bipolar montage (b) 
   mFiles.primes = cellfun(@(x) fullfile(bdir, x), {mFiles.primes.FileName}, 'UniformOutput', 0);
   mFiles.repetitions = cellfun(@(x) fullfile(bdir, x), {mFiles.repetitions.FileName}, 'UniformOutput', 0);
-  % baseline normalization (b)
   bFiles.primes = bst_process('CallProcess', 'process_baseline_norm', mFiles.primes, [], 'baseline', baseline.prime, ...
                               'sensortypes', 'SEEG', 'method', baseline_method, 'overwrite', 0);  
   bFiles.repetitions = bst_process('CallProcess', 'process_baseline_norm', mFiles.repetitions, [], 'baseline', baseline.repetition, ...
                                    'sensortypes', 'SEEG', 'method', baseline_method, 'overwrite', 0);
   % save working filenames
-  save(ftmp, 'bFiles', '-append');  % bFiles would be used for ERP analysis
+  save(ftmp, 'nFiles', 'oFiles', 'mFiles', '-append');  % nFiles (monopolar) would be used for ERP analysis
 end
 %% ---------------------------
