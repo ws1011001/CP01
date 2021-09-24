@@ -43,12 +43,15 @@ clc
 %% ---------------------------
 
 %% set environment (packages, functions, working path etc.)
+% if use HPC
+mdir = '/CP01';
+addpath(genpath('/CP01/mia'));
 % setup working path
-mdir = '/media/wang/BON/Projects/CP01';
+%mdir = '/media/wang/BON/Projects/CP01';
 ddir = fullfile(mdir,'SEEG_LectureVWFA','derivatives');  % derivatives in the BIDS structure
 bdir = fullfile(ddir,'mia_SEEG_LectureVWFA');            % path to brainsotrm database
 % read the subjects list
-fid = fopen(fullfile(mdir,'CP01_subjects_03.txt'));
+fid = fopen(fullfile(mdir,'CP01_subjects.txt'));
 subjects = textscan(fid,'%s');
 fclose(fid);
 subjects = subjects{1};  % the subjects list
@@ -57,11 +60,13 @@ n = length(subjects);
 mtg = 'bipolar';  % montage
 tfa = 'morlet';   % time-frequency analysis
 freq_step = 10;
-freq_lobd = 80;
+freq_lobd = 40;
+freq_mdbd = 80;  % the gamma frequency to separate low and high gamma
 freq_upbd = 150;
-ptoken = sprintf('%s_%s_data_%d_%d_%d', mtg, tfa, freq_step, freq_lobd, freq_upbd);
-OPTIONS.nperm = 5000;
-OPTIONS.smooth = 5;  % this number x 3 < number of ROIs (for successful smoothing)
+freq_bands = [freq_lobd, freq_mdbd; freq_mdbd, freq_upbd; freq_lobd, freq_upbd];
+nbands = size(freq_bands, 1);
+OPTIONS.nperm  = 5000;
+OPTIONS.smooth = 20;  % this number x 3 < number of ROIs (for successful smoothing)
 OPTIONS.threshp = 0.05;
 OPTIONS.win_noedges = [-0.2 0.6];
 OPTIONS.ylab1 = 'Gamma Activity (Z-score)';
@@ -71,60 +76,73 @@ OPTIONS.ylab1 = 'Gamma Activity (Z-score)';
 % fdr_duration = 20;        % duration (in ms) for FDR correction in the time domain
 conditions = {'AAp', 'AAt', 'AVp', 'AVt', 'VAp', 'VAt', 'VVp', 'VVt'};
 ncond = length(conditions);
-conditions_pairs = {{'AAp', 'AAt'}, {'AVp', 'AVt'}, {'VAp', 'VAt'}, {'VVp', 'VVt'}};
+conditions_pairs = {{'AAp', 'AAt'}, {'AVp', 'AVt'}, {'VAp', 'VAt'}, {'VVp', 'VVt'}, {'AAp', 'AVp'}, {'VVp', 'VAp'}, {'AAt', 'VAt'}, {'VVt', 'AVt'}};
 % set switches
 isCompChn = true;
 isGetROIs = false;
 isCompCon = false;
 %% ---------------------------
 
-%%
+%% do comparisons for each channel
 if isCompChn
   for i =1 :n
     subj = subjects{i};
     sdir = fullfile(bdir, subj);
-    fprintf('Perform permutation tests between conditions for each channel for subject %s. \n', subj);   
-    % extract signals for each channel
-    for icond = 1:ncond
-      cdir = fullfile(sdir, conditions{icond});
-      fdat = fullfile(cdir, sprintf('%s_%s.mat', conditions{icond}, ptoken));
-      chn = chn_signals(fdat);  % channel-wise data structure
-      save(fdat, 'chn', '-append');
-      % combine signals
-      signals.(conditions{icond}) = chn.signals;
+    fprintf('Perform permutation tests between conditions for each channel for subject %s. \n', subj); 
+    % do comparisons for each frequency band
+    for iband = 1:nbands
+      ptoken = sprintf('%s_%s_data_%d_%d_%d', mtg, tfa, freq_step, freq_bands(iband, 1), freq_bands(iband, 2));
+      % extract signals for each channel per condition
+      for icond = 1:ncond
+        cdir = fullfile(sdir, conditions{icond});
+        fdat = fullfile(cdir, sprintf('%s_%s.mat', conditions{icond}, ptoken));
+        vdat = who('-file', fdat);
+        if ismember('chn', vdat)
+          load(fdat, 'chn');
+        else
+          chn = chn_signals(fdat);  % channel-wise data structure
+          save(fdat, 'chn', '-append');
+        end
+        % combine signals
+        signals.(conditions{icond}) = chn.signals;
+      end
+      % compare conditions
+      OPTIONS.labels      = chn.labels(1, :);
+      OPTIONS.time        = chn.time;
+      OPTIONS.plot_signif = true;
+      for ipair = 1:length(conditions_pairs)
+        cond_pair = conditions_pairs{ipair};
+        rdir = fullfile(sdir, sprintf('%s-%s', cond_pair{1}, cond_pair{2}));
+        if ~exist(rdir, 'dir'); mkdir(rdir); end
+        % prepare data for one-sample permutation test (in MIA)
+        fpair = fullfile(rdir, sprintf('%s-%s_%s.mat', cond_pair{1}, cond_pair{2}, ptoken));
+        if ~exist(fpair, 'file')        
+          data.(cond_pair{1}) = load(fullfile(sdir, cond_pair{1}, sprintf('%s_%s.mat', cond_pair{1}, ptoken)));
+          data.(cond_pair{2}) = load(fullfile(sdir, cond_pair{2}, sprintf('%s_%s.mat', cond_pair{2}, ptoken)));
+          zbaseline = data.(cond_pair{1}).zbaseline;
+          freqb     = data.(cond_pair{1}).freqb;
+          Time      = data.(cond_pair{1}).Time;
+          labels    = data.(cond_pair{1}).labels;
+          history   = data.(cond_pair{1}).history;
+          F  = data.(cond_pair{1}).F - data.(cond_pair{2}).F;
+          zs = data.(cond_pair{1}).zs - data.(cond_pair{2}).zs;
+          save(fpair, 'zbaseline', 'freqb', 'Time', 'labels', 'history', 'F', 'zs');
+          clear('zbaseline', 'freqb', 'Time', 'labels', 'history', 'F', 'zs');
+        end
+        % two-sample permutation test            
+        fperm = fullfile(rdir, sprintf('stats-perm2_%s-%s_%s.mat', cond_pair{1}, cond_pair{2}, ptoken));
+        if ~exist(fperm, 'file')
+          chn_perm = roi_stats_permutations(signals.(cond_pair{1}), signals.(cond_pair{2}), OPTIONS);
+          save(fperm, 'chn_perm');
+        else
+          chn_perm = matfile(fperm, 'writable', true);
+          chn_perm = roi_stats_permutations(signals.(cond_pair{1}), signals.(cond_pair{2}), OPTIONS);
+        end     
+%         OPTIONS.outputdir = rdir;
+%         OPTIONS.figprefix = sprintf('%s_freq-%d-%d', subj, freq_bands(iband, 1), freq_bands(iband, 2));
+%         roi_plot_conditions(chn_perm, cond_pair, OPTIONS);  % plot only significant results
+      end  
     end
-    % compare conditions
-    OPTIONS.labels = chn.labels(1, :);
-    OPTIONS.time = chn.time;
-    OPTIONS.plot_signif = true;
-    for ipair = 1:length(conditions_pairs)
-      cond_pair = conditions_pairs{ipair};
-      rdir = fullfile(sdir, sprintf('%s-%s', cond_pair{1}, cond_pair{2}));
-      if ~exist(rdir, 'dir'); mkdir(rdir); end
-      % prepare data for one-sample permutation test (in MIA)
-      fpair = fullfile(rdir, sprintf('%s-%s_%s.mat', cond_pair{1}, cond_pair{2}, ptoken));
-      data.(cond_pair{1}) = load(fullfile(sdir, cond_pair{1}, sprintf('%s_%s.mat', cond_pair{1}, ptoken)));
-      data.(cond_pair{2}) = load(fullfile(sdir, cond_pair{2}, sprintf('%s_%s.mat', cond_pair{2}, ptoken)));
-      zbaseline = data.(cond_pair{1}).zbaseline;
-      freqb = data.(cond_pair{1}).freqb;
-      Time = data.(cond_pair{1}).Time;
-      labels = data.(cond_pair{1}).labels;
-      history = data.(cond_pair{1}).history;
-      F = data.(cond_pair{1}).F - data.(cond_pair{2}).F;
-      zs = data.(cond_pair{1}).zs - data.(cond_pair{2}).zs;
-      save(fpair, 'zbaseline', 'freqb', 'Time', 'labels', 'history', 'F', 'zs');
-      clear('zbaseline', 'freqb', 'Time', 'labels', 'history', 'F', 'zs');
-%       % two-sample permutation test            
-%       fperm = fullfile(rdir, sprintf('stats-perm2_%s-%s_%s.mat', cond_pair{1}, cond_pair{2}, ptoken));
-%       if ~exist(fperm, 'file')
-%         chn_perm = roi_stats_permutations(signals.(cond_pair{1}), signals.(cond_pair{2}), OPTIONS);
-%         save(fperm, 'chn_perm');
-%       else
-%         load(fperm, 'chn_perm');
-%       end     
-%       OPTIONS.outputdir = rdir;
-%       roi_plot_conditions(chn_perm, cond_pair, OPTIONS);  % plot only significant results
-    end     
   end
 end
 %% ---------------------------
