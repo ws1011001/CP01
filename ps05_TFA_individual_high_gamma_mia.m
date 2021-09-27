@@ -43,11 +43,11 @@ clc
 %% ---------------------------
 
 %% set environment (packages, functions, working path etc.)
-% if use HPC
-mdir = '/CP01';
-addpath(genpath('/CP01/mia'));
+% % if use HPC
+% mdir = '/CP01';
+% addpath(genpath('/CP01/mia'));
 % setup working path
-%mdir = '/media/wang/BON/Projects/CP01';
+mdir = '/media/wang/BON/Projects/CP01';
 ddir = fullfile(mdir,'SEEG_LectureVWFA','derivatives');  % derivatives in the BIDS structure
 bdir = fullfile(ddir,'mia_SEEG_LectureVWFA');            % path to brainsotrm database
 % read the subjects list
@@ -78,7 +78,8 @@ conditions = {'AAp', 'AAt', 'AVp', 'AVt', 'VAp', 'VAt', 'VVp', 'VVt'};
 ncond = length(conditions);
 conditions_pairs = {{'AAp', 'AAt'}, {'AVp', 'AVt'}, {'VAp', 'VAt'}, {'VVp', 'VVt'}, {'AAp', 'AVp'}, {'VVp', 'VAp'}, {'AAt', 'VAt'}, {'VVt', 'AVt'}};
 % set switches
-isCompChn = true;
+isCompChn = false;
+isPlotChn = true;
 isGetROIs = false;
 isCompCon = false;
 %% ---------------------------
@@ -138,12 +139,43 @@ if isCompChn
           chn_perm = matfile(fperm, 'writable', true);
           chn_perm = roi_stats_permutations(signals.(cond_pair{1}), signals.(cond_pair{2}), OPTIONS);
         end     
-%         OPTIONS.outputdir = rdir;
-%         OPTIONS.figprefix = sprintf('%s_freq-%d-%d', subj, freq_bands(iband, 1), freq_bands(iband, 2));
-%         roi_plot_conditions(chn_perm, cond_pair, OPTIONS);  % plot only significant results
+        OPTIONS.outputdir = fullfile(rdir, ptoken);
+        OPTIONS.figprefix = sprintf('%s_freq-%d-%d', subj, freq_bands(iband, 1), freq_bands(iband, 2));
+        roi_plot_conditions(chn_perm, cond_pair, OPTIONS);  % plot only significant results
       end  
     end
   end
+end
+%% ---------------------------
+
+%% visualize channel-wise between-condition comparisons
+if isPlotChn
+  for i =1 :n
+    subj = subjects{i};
+    sdir = fullfile(bdir, subj);
+    fprintf('Perform permutation tests between conditions for each channel for subject %s. \n', subj); 
+    % plot comparisons for each frequency band
+    for iband = 1:nbands
+      ptoken = sprintf('%s_%s_data_%d_%d_%d', mtg, tfa, freq_step, freq_bands(iband, 1), freq_bands(iband, 2));
+      % extarc parameters
+      fdat = fullfile(sdir, 'AAp', sprintf('AAp_%s.mat', ptoken));  
+      load(fdat, 'chn');
+      OPTIONS.labels      = chn.labels(1, :);
+      OPTIONS.time        = chn.time;
+      OPTIONS.plot_signif = true;
+      for ipair = 1:length(conditions_pairs)
+        cond_pair = conditions_pairs{ipair};
+        rdir = fullfile(sdir, sprintf('%s-%s', cond_pair{1}, cond_pair{2}));
+        if ~exist(rdir, 'dir'); mkdir(rdir); end
+        % plot two-sample permutation test            
+        fperm = fullfile(rdir, sprintf('stats-perm2_%s-%s_%s.mat', cond_pair{1}, cond_pair{2}, ptoken));
+        load(fperm);
+        OPTIONS.outputdir = fullfile(rdir, ptoken);
+        OPTIONS.figprefix = sprintf('%s_freq-%d-%d', subj, freq_bands(iband, 1), freq_bands(iband, 2));
+        roi_plot_conditions(chn_perm, cond_pair, OPTIONS);  % plot only significant results
+      end  
+    end
+  end  
 end
 %% ---------------------------
 
