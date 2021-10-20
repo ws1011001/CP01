@@ -42,6 +42,7 @@ montagetype  = 'orig';  % monopolar
 nperm        = 5000;    % the number of randomizations in permutation tests
 fdr_p        = 0.05;    % alpha level
 fdr_duration = 20;      % duration (in ms) for FDR correction in the time domain
+COIs_selected = {[63:74],[37:48, 106:117]};
 % figure settings
 OPTIONS.fontsize  = 18;
 OPTIONS.linewidth = 2;
@@ -131,7 +132,7 @@ end
 %% visualize ERPs for auditory and visual prime conditions
 if isPlotPrim
   conditions = {'Ap', 'Vp'};
-  ncond = length(conditions);
+  ncond = length(conditions);  
   for i = 1:n
     subj = subjects{i};
     sdir = fullfile(vdir, 'timecourse_ERPs', subj, 'Prime');
@@ -140,7 +141,11 @@ if isPlotPrim
     ferp = fullfile(bdir, subj, sprintf('%s_%s_ERPs-monopolar.mat', subj, ptoken));   
     load(ferp);
     % combine ERPs average and variations
-    COIs = [];  % consider all channels
+    if isempty(COIs_selected)
+      COIs = [];  % consider all channels
+    else
+      COIs = COIs_selected{i};
+    end    
     for icond = 1:ncond
       cndt = conditions{icond};
       davg = load(fullfile(bdir, ERPs.(cndt).favg.FileName), 'F', 'Time');
@@ -187,7 +192,11 @@ if isPlotRSEs
 %     signif_AA = load(fullfile(bdir, ERPs.perm.AAp2AAt_fdr.FileName), 'F');
 %     signif_VV = load(fullfile(bdir, ERPs.perm.VVp2VVt_fdr.FileName), 'F');
 %     COIs = union(utilities_timemat2signif(signif_AA.F), utilities_timemat2signif(signif_VV.F));
-    COIs = [];
+    if isempty(COIs_selected)
+      COIs = [];  % consider all channels
+    else
+      COIs = COIs_selected{i};
+    end 
     % combine ERPs average and variations
     for icond = 1:ncond
       cndt = conditions{icond};
