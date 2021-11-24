@@ -6,7 +6,7 @@
 %% By Shuai Wang, [date] 2021-04-18
 %%
 %% ---------------------------
-%% Notes:
+%% Notes: - to keep the original events while merging events, process_evt_merge() was modified (see its codes).
 %%   
 %%
 %% ---------------------------
@@ -38,6 +38,7 @@ ptoken = 'ses-01_task-RS_run-01_ieeg';     % raw data token
 notch_filters = [50, 100, 150, 200, 250];  % notch frequencies in Hz
 freq_highpass = 0.3;                       % 0.3 Hz recommended by AnneSo
 freq_lowpass = 0;                          % 0 means disable
+timewindow.check = [-0.5 1];               % epoch window for sanicty check in MIA requested by Agnes
 timewindow.prime = [-0.4 0.8];             % epoch window for prime trials
 timewindow.repetition = [-0.3 0.7];        % epoch window for repetition trials
 baseline.prime = [-0.4 0];                 % baseline window for prime trials
@@ -47,6 +48,8 @@ baseline_method = 'bl';                    % DC offset correction: x_std = x - u
 events.repetitions = 'AAp, AAt, AVp, AVt, VAp, VAt, VVp, VVt';   % original eight RSE conditions
 events.merge_primes = [{'AAp, AVp', 'Ap'}; {'VVp, VAp', 'Vp'}];  % merge AAp and AVp as Ap (auditory prime trials), do the same for visual trials
 events.primes = 'Ap, Vp';
+events.merge_checks = [{'AAp, AVp', 'Ap_long'}; {'VVp, VAp', 'Vp_long'}];  % merge auditory/visual trials for sanicty check in MIA requested by Agnes
+events.checks = 'Ap_long, Vp_long';
 %% ---------------------------
 
 %% import raw data
@@ -95,9 +98,17 @@ sFiles.bandpass = bst_process('CallProcess', 'process_bandpass', sFiles.notch, [
 for i = 1:length(events.merge_primes)
   bst_process('CallProcess', 'process_evt_merge', sFiles.bandpass, [], 'evtnames', events.merge_primes{i, 1}, 'newname', events.merge_primes{i, 2});
 end
+% merge prime trials with long segment (-500 ~ 1000 ms) for Agnes
+for i = 1:length(events.merge_checks)
+  bst_process('CallProcess', 'process_evt_merge', sFiles.bandpass, [], 'evtnames', events.merge_checks{i, 1}, 'newname', events.merge_checks{i, 2});
+end
 %% ---------------------------
 
 %% epoch
+% check trials
+trials.checks = bst_process('CallProcess', 'process_import_data_event', sFiles.bandpass, [], 'subjectname', '', ...
+                            'condition', '', 'eventname', events.checks, 'timewindow', [], 'epochtime', timewindow.check, ...
+                            'createcond', 1, 'ignoreshort', 0, 'usectfcomp', 0, 'usessp', 0, 'freq', [], 'baseline', []);
 % prime trials 
 trials.primes = bst_process('CallProcess', 'process_import_data_event', sFiles.bandpass, [], 'subjectname', '', ...
                             'condition', '', 'eventname', events.primes, 'timewindow', [], 'epochtime', timewindow.prime, ...
@@ -116,21 +127,25 @@ for i =1:n
   subj = subjects{i};
   mon1 = sprintf('%s: SEEG (orig)[tmp]', subj);       % monopolar
   mon2 = sprintf('%s: SEEG (bipolar 2)[tmp]', subj);  % bipolar2
-  ftmp = fullfile(bdir, subj, sprintf('%s_%s_working-filenames.mat', subj, ptoken));
   % group all conditions
   fprintf('Apply montage %s and %s \n', mon1, mon2);
+  tFiles.checks = {trials.checks(ismember({trials.checks.SubjectName}, subj)).FileName};
+  tFiles.checks = cellfun(@(x) fullfile(bdir, x), tFiles.checks, 'UniformOutput', 0);  
   tFiles.primes = {trials.primes(ismember({trials.primes.SubjectName}, subj)).FileName};
   tFiles.primes = cellfun(@(x) fullfile(bdir, x), tFiles.primes, 'UniformOutput', 0);
   tFiles.repetitions = {trials.repetitions(ismember({trials.repetitions.SubjectName}, subj)).FileName};
   tFiles.repetitions = cellfun(@(x) fullfile(bdir, x), tFiles.repetitions, 'UniformOutput', 0);
   % apply monopolar montage
+  nFiles.checks = bst_process('CallProcess', 'process_montage_apply', tFiles.checks, [], 'montage', mon1, 'createchan', 1);
   nFiles.primes = bst_process('CallProcess', 'process_montage_apply', tFiles.primes, [], 'montage', mon1, 'createchan', 1);
   nFiles.repetitions = bst_process('CallProcess', 'process_montage_apply', tFiles.repetitions, [], 'montage', mon1, 'createchan', 1);  
   % apply bipolar2 montage (m)
+  mFiles.checks = bst_process('CallProcess', 'process_montage_apply', tFiles.checks, [], 'montage', mon2, 'createchan', 1);
   mFiles.primes = bst_process('CallProcess', 'process_montage_apply', tFiles.primes, [], 'montage', mon2, 'createchan', 1);
   mFiles.repetitions = bst_process('CallProcess', 'process_montage_apply', tFiles.repetitions, [], 'montage', mon2, 'createchan', 1);
   % save working filenames
-  save(ftmp, 'tFiles', 'nFiles', 'mFiles', 'mon1', 'mon2', 'timewindow', 'baseline', 'events', '-append');
+  ftmp = fullfile(bdir, subj, sprintf('%s_%s_working-filenames.mat', subj, ptoken));
+  save(ftmp, 'tFiles', 'nFiles', 'mFiles', 'mon1', 'mon2', 'timewindow', 'baseline', 'events');
 end 
 %% ---------------------------
 
