@@ -78,8 +78,8 @@ conditions = {'AAp', 'AAt', 'AVp', 'AVt', 'VAp', 'VAt', 'VVp', 'VVt'};
 ncond = length(conditions);
 conditions_pairs = {{'AAp', 'AAt'}, {'AVp', 'AVt'}, {'VAp', 'VAt'}, {'VVp', 'VVt'}, {'AAp', 'AVp'}, {'VVp', 'VAp'}, {'AAt', 'VAt'}, {'VVt', 'AVt'}};
 % set switches
-isCompChn = false;
-isPlotChn = true;
+isCompChn = true;
+isPlotChn = false;
 isGetROIs = false;
 isCompCon = false;
 %% ---------------------------
@@ -118,6 +118,7 @@ if isCompChn
         % prepare data for one-sample permutation test (in MIA)
         fpair = fullfile(rdir, sprintf('%s-%s_%s.mat', cond_pair{1}, cond_pair{2}, ptoken));
         if ~exist(fpair, 'file')        
+          fprintf('Prepare data %s for one-sample permutation test of %s and %s in MIA. \n', ptoken, cond_pair{1}, cond_pair{2});
           data.(cond_pair{1}) = load(fullfile(sdir, cond_pair{1}, sprintf('%s_%s.mat', cond_pair{1}, ptoken)));
           data.(cond_pair{2}) = load(fullfile(sdir, cond_pair{2}, sprintf('%s_%s.mat', cond_pair{2}, ptoken)));
           zbaseline = data.(cond_pair{1}).zbaseline;
@@ -129,16 +130,21 @@ if isCompChn
           zs = data.(cond_pair{1}).zs - data.(cond_pair{2}).zs;
           save(fpair, 'zbaseline', 'freqb', 'Time', 'labels', 'history', 'F', 'zs');
           clear('zbaseline', 'freqb', 'Time', 'labels', 'history', 'F', 'zs');
+        else
+          fprintf('Paired data %s for one-sample permutation test of %s and %s in MIA already exists. \n', ptoken, cond_pair{1}, cond_pair{2});
         end
         % two-sample permutation test            
         fperm = fullfile(rdir, sprintf('stats-perm2_%s-%s_%s.mat', cond_pair{1}, cond_pair{2}, ptoken));
+        fprintf('Perform two-sample permutation tests between %s and %s on data %s. \n', cond_pair{1}, cond_pair{2}, ptoken);
+        tic
         if ~exist(fperm, 'file')
           chn_perm = roi_stats_permutations(signals.(cond_pair{1}), signals.(cond_pair{2}), OPTIONS);
           save(fperm, 'chn_perm');
         else
           chn_perm = matfile(fperm, 'writable', true);
           chn_perm = roi_stats_permutations(signals.(cond_pair{1}), signals.(cond_pair{2}), OPTIONS);
-        end     
+        end
+        toc
         OPTIONS.outputdir = fullfile(rdir, ptoken);
         OPTIONS.figprefix = sprintf('%s_freq-%d-%d', subj, freq_bands(iband, 1), freq_bands(iband, 2));
         roi_plot_conditions(chn_perm, cond_pair, OPTIONS);  % plot only significant results
