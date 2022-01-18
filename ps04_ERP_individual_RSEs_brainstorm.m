@@ -42,7 +42,8 @@ montagetype  = 'orig';  % monopolar
 nperm        = 5000;    % the number of randomizations in permutation tests
 fdr_p        = 0.05;    % alpha level
 fdr_duration = 20;      % duration (in ms) for FDR correction in the time domain
-COIs_selected = {[63:74],[37:48, 106:117]};
+%COIs_selected = {[63:74],[37:48, 106:117]};  % sub-09
+COIs_selected = {[69:80]};  % sub-10
 % figure settings
 OPTIONS.fontsize  = 18;
 OPTIONS.linewidth = 2;
@@ -51,8 +52,8 @@ OPTIONS.xscale    = 0.1;
 OPTIONS.legend    = 'far-left';
 OPTIONS.sigbar    = false;
 % set switches
-isAllTests = true;  % do statistical tests for all conditions and contrasts
-isPlotPrim = true;  % plot time-courses for (auditory and visual) prime conditions 
+isAllTests = false;  % do statistical tests for all conditions and contrasts
+isPlotPrim = false;  % plot time-courses for (auditory and visual) prime conditions 
 isPlotRSEs = true;  % plot ERPs for RSE contrasts
 %% ---------------------------
 
