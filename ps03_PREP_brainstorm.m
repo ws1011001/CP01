@@ -41,6 +41,7 @@ freq_lowpass = 0;                          % 0 means disable
 timewindow.check = [-0.5 1];               % epoch window for sanicty check in MIA requested by Agnes
 timewindow.prime = [-0.4 0.8];             % epoch window for prime trials
 timewindow.repetition = [-0.3 0.7];        % epoch window for repetition trials
+timewindow.video = [-0.4 1.2];             % epoch window for video-based stimuli
 baseline.prime = [-0.4 0];                 % baseline window for prime trials
 baseline.repetition = [-0.3 0];            % baseline window for repetition trials
 baseline_method = 'bl';                    % DC offset correction: x_std = x - u;
@@ -50,6 +51,8 @@ events.merge_primes = [{'AAp, AVp', 'Ap'}; {'VVp, VAp', 'Vp'}];  % merge AAp and
 events.primes = 'Ap, Vp';
 events.merge_checks = [{'AAp, AVp', 'Ap_long'}; {'VVp, VAp', 'Vp_long'}];  % merge auditory/visual trials for sanicty check in MIA requested by Agnes
 events.checks = 'Ap_long, Vp_long';
+events.controls = 'WV, PA, PV, SA, SV';  % control conditions sharing the same baseline with primes: visual words, pseudowords and scrambles
+events.videos = 'FA, FV, WA';  % videos and stimuli extracted from videos
 %% ---------------------------
 
 %% import raw data
@@ -117,6 +120,14 @@ trials.primes = bst_process('CallProcess', 'process_import_data_event', sFiles.b
 trials.repetitions = bst_process('CallProcess', 'process_import_data_event', sFiles.bandpass, [], 'subjectname', '', ...
                                  'condition', '', 'eventname', events.repetitions, 'timewindow', [], 'epochtime', timewindow.repetition, ...
                                  'createcond', 1, 'ignoreshort', 0, 'usectfcomp', 0, 'usessp', 0, 'freq', [], 'baseline', []);
+% control trials 
+trials.controls = bst_process('CallProcess', 'process_import_data_event', sFiles.bandpass, [], 'subjectname', '', ...
+                              'condition', '', 'eventname', events.controls, 'timewindow', [], 'epochtime', timewindow.prime, ...
+                              'createcond', 1, 'ignoreshort', 0, 'usectfcomp', 0, 'usessp', 0, 'freq', [], 'baseline', []);
+% video-based trials 
+trials.videos = bst_process('CallProcess', 'process_import_data_event', sFiles.bandpass, [], 'subjectname', '', ...
+                            'condition', '', 'eventname', events.videos, 'timewindow', [], 'epochtime', timewindow.video, ...
+                            'createcond', 1, 'ignoreshort', 0, 'usectfcomp', 0, 'usessp', 0, 'freq', [], 'baseline', []);                            
 % save working filepaths and parameters
 ftmp = fullfile(bdir, sprintf('ps03_PREP_%s.mat', datetime('now','Format', 'yyyy-MM-dd''T''HH:mm:SS')));
 save(ftmp, 'pFiles', 'sFiles', 'trials', 'subjects', 'n', 'notch_filters', 'freq_highpass', 'freq_lowpass', 'timewindow', 'baseline', 'events');
@@ -135,14 +146,22 @@ for i =1:n
   tFiles.primes = cellfun(@(x) fullfile(bdir, x), tFiles.primes, 'UniformOutput', 0);
   tFiles.repetitions = {trials.repetitions(ismember({trials.repetitions.SubjectName}, subj)).FileName};
   tFiles.repetitions = cellfun(@(x) fullfile(bdir, x), tFiles.repetitions, 'UniformOutput', 0);
-  % apply monopolar montage
+  tFiles.controls = {trials.controls(ismember({trials.controls.SubjectName}, subj)).FileName};
+  tFiles.controls = cellfun(@(x) fullfile(bdir, x), tFiles.controls, 'UniformOutput', 0); 
+  tFiles.videos = {trials.videos(ismember({trials.videos.SubjectName}, subj)).FileName};
+  tFiles.videos = cellfun(@(x) fullfile(bdir, x), tFiles.videos, 'UniformOutput', 0);   
+  % apply monopolar montage (n)
   nFiles.checks = bst_process('CallProcess', 'process_montage_apply', tFiles.checks, [], 'montage', mon1, 'createchan', 1);
   nFiles.primes = bst_process('CallProcess', 'process_montage_apply', tFiles.primes, [], 'montage', mon1, 'createchan', 1);
   nFiles.repetitions = bst_process('CallProcess', 'process_montage_apply', tFiles.repetitions, [], 'montage', mon1, 'createchan', 1);  
+  nFiles.controls = bst_process('CallProcess', 'process_montage_apply', tFiles.controls, [], 'montage', mon1, 'createchan', 1);
+  nFiles.videos = bst_process('CallProcess', 'process_montage_apply', tFiles.videos, [], 'montage', mon1, 'createchan', 1);
   % apply bipolar2 montage (m)
   mFiles.checks = bst_process('CallProcess', 'process_montage_apply', tFiles.checks, [], 'montage', mon2, 'createchan', 1);
   mFiles.primes = bst_process('CallProcess', 'process_montage_apply', tFiles.primes, [], 'montage', mon2, 'createchan', 1);
   mFiles.repetitions = bst_process('CallProcess', 'process_montage_apply', tFiles.repetitions, [], 'montage', mon2, 'createchan', 1);
+  mFiles.controls = bst_process('CallProcess', 'process_montage_apply', tFiles.controls, [], 'montage', mon2, 'createchan', 1);
+  mFiles.videos = bst_process('CallProcess', 'process_montage_apply', tFiles.videos, [], 'montage', mon2, 'createchan', 1);
   % save working filenames
   ftmp = fullfile(bdir, subj, sprintf('%s_%s_working-filenames.mat', subj, ptoken));
   save(ftmp, 'tFiles', 'nFiles', 'mFiles', 'mon1', 'mon2', 'timewindow', 'baseline', 'events');
@@ -155,21 +174,33 @@ for i =1:n
   % read working filenames
   ftmp = fullfile(bdir, subj, sprintf('%s_%s_working-filenames.mat', subj, ptoken));
   load(ftmp, 'nFiles', 'mFiles');
-  % baseline normalization for monopolar montage (n) 
+  % baseline normalization for monopolar montage (o) 
   nFiles.primes = cellfun(@(x) fullfile(bdir, x), {nFiles.primes.FileName}, 'UniformOutput', 0);
   nFiles.repetitions = cellfun(@(x) fullfile(bdir, x), {nFiles.repetitions.FileName}, 'UniformOutput', 0);
+  nFiles.controls = cellfun(@(x) fullfile(bdir, x), {nFiles.controls.FileName}, 'UniformOutput', 0);
+  nFiles.videos = cellfun(@(x) fullfile(bdir, x), {nFiles.videos.FileName}, 'UniformOutput', 0);
   oFiles.primes = bst_process('CallProcess', 'process_baseline_norm', nFiles.primes, [], 'baseline', baseline.prime, ...
                               'sensortypes', 'SEEG', 'method', baseline_method, 'overwrite', 0);  
   oFiles.repetitions = bst_process('CallProcess', 'process_baseline_norm', nFiles.repetitions, [], 'baseline', baseline.repetition, ...
                                    'sensortypes', 'SEEG', 'method', baseline_method, 'overwrite', 0); 
+  oFiles.controls = bst_process('CallProcess', 'process_baseline_norm', nFiles.controls, [], 'baseline', baseline.prime, ...
+                                'sensortypes', 'SEEG', 'method', baseline_method, 'overwrite', 0);
+  oFiles.videos = bst_process('CallProcess', 'process_baseline_norm', nFiles.videos, [], 'baseline', baseline.prime, ...
+                              'sensortypes', 'SEEG', 'method', baseline_method, 'overwrite', 0);                            
   % baseline normalization for bipolar montage (b) 
   mFiles.primes = cellfun(@(x) fullfile(bdir, x), {mFiles.primes.FileName}, 'UniformOutput', 0);
   mFiles.repetitions = cellfun(@(x) fullfile(bdir, x), {mFiles.repetitions.FileName}, 'UniformOutput', 0);
+  mFiles.controls = cellfun(@(x) fullfile(bdir, x), {mFiles.controls.FileName}, 'UniformOutput', 0);
+  mFiles.videos = cellfun(@(x) fullfile(bdir, x), {mFiles.videos.FileName}, 'UniformOutput', 0);
   bFiles.primes = bst_process('CallProcess', 'process_baseline_norm', mFiles.primes, [], 'baseline', baseline.prime, ...
                               'sensortypes', 'SEEG', 'method', baseline_method, 'overwrite', 0);  
   bFiles.repetitions = bst_process('CallProcess', 'process_baseline_norm', mFiles.repetitions, [], 'baseline', baseline.repetition, ...
                                    'sensortypes', 'SEEG', 'method', baseline_method, 'overwrite', 0);
+  bFiles.controls = bst_process('CallProcess', 'process_baseline_norm', mFiles.controls, [], 'baseline', baseline.prime, ...
+                                'sensortypes', 'SEEG', 'method', baseline_method, 'overwrite', 0);
+  bFiles.videos = bst_process('CallProcess', 'process_baseline_norm', mFiles.videos, [], 'baseline', baseline.prime, ...
+                              'sensortypes', 'SEEG', 'method', baseline_method, 'overwrite', 0);                            
   % save working filenames
-  save(ftmp, 'nFiles', 'oFiles', 'mFiles', '-append');  % nFiles (monopolar) would be used for ERP analysis
+  save(ftmp, 'nFiles', 'oFiles', 'mFiles', 'bFiles', '-append');  % nFiles (monopolar) would be used for ERP analysis
 end
 %% ---------------------------
