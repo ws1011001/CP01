@@ -6,34 +6,10 @@
 %% By Shuai Wang, [date] 2021-03-19
 %%
 %% ---------------------------
-%% Notes: - This script is modified from ASD's script seeg_pipeline_MAIN.m (see below)
+%% Notes: - This script is modified from ASD's script seeg_pipeline_MAIN.m
 %%   
 %%
 %% ---------------------------
-% ========================================================================
-% This file is part of MIA.
-% 
-% MIA is free software: you can redistribute it and/or modify
-% it under the terms of the GNU General Public License as published by
-% the Free Software Foundation, either version 3 of the License, or
-% (at your option) any later version.
-% 
-% MIA is distributed in the hope that it will be useful,
-% but WITHOUT ANY WARRANTY; without even the implied warranty of
-% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-% GNU General Public License for more details.
-%  
-% Copyright (C) 2016-2018 CNRS - Universite Aix-Marseille
-%
-% ========================================================================
-% This software was developed by
-%       Anne-Sophie Dubarry (CNRS Universite Aix-Marseille)
-% ***********************************************************************
-%
-% Script that process group analysis for GAMMABLOCK : 
-% 1) Get roi from group analysis of all conditions
-% 2) For the found roi, perform ttest between conditions 
-% ========================================================================
 
 
 %% clean up
@@ -49,7 +25,7 @@ clc
 % setup working path
 mdir = '/media/wang/BON/Projects/CP01';
 ddir = fullfile(mdir,'SEEG_LectureVWFA','derivatives');  % derivatives in the BIDS structure
-bdir = fullfile(ddir,'mia_SEEG_LectureVWFA');            % path to brainsotrm database
+bdir = fullfile(ddir,'mia_SEEG_LectureVWFA');            % path to MIA database
 % read the subjects list
 fid = fopen(fullfile(mdir,'CP01_subjects.txt'));
 subjects = textscan(fid,'%s');
@@ -78,10 +54,17 @@ conditions = {'AAp', 'AAt', 'AVp', 'AVt', 'VAp', 'VAt', 'VVp', 'VVt'};
 ncond = length(conditions);
 conditions_pairs = {{'AAp', 'AAt'}, {'AVp', 'AVt'}, {'VAp', 'VAt'}, {'VVp', 'VVt'}, {'AAp', 'AVp'}, {'VVp', 'VAp'}, {'AAt', 'VAt'}, {'VVt', 'AVt'}};
 % set switches
-isCompChn = true;
+isImpData = true;
+isCompChn = false;
 isPlotChn = false;
 isGetROIs = false;
 isCompCon = false;
+%% ---------------------------
+
+%% Import data from brainstorm database
+if isImpData
+  
+end
 %% ---------------------------
 
 %% do comparisons for each channel

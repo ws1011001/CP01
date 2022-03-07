@@ -64,11 +64,11 @@ for i = 1:n
   bst_process('CallProcess', 'process_import_data_raw', [], [], 'subjectname', subj, 'datafile', {fraw, 'SEEG-ALL'}, ...
               'channelreplace', 1, 'channelalign', 0, 'evtmode', 'value');
 end
+pFiles = cellfun(@(x) fullfile(bdir, x, sprintf('@raw%s_%s/data_0raw_%s_%s.mat', x, ptoken, x, ptoken)), subjects, 'UniformOutput', 0);
 %% ---------------------------
 
 %% notch filters : (PSD), notch at 50, 100, 150, 200, 250Hz
 % PSD (to check bad channels)
-pFiles = cellfun(@(x) fullfile(bdir, x, sprintf('@raw%s_%s/data_0raw_%s_%s.mat', x, ptoken, x, ptoken)), subjects, 'UniformOutput', 0);
 bst_process('CallProcess', 'process_psd', pFiles, [], 'timewindow', [], 'win_length', 10, 'win_overlap', 50, ...
             'units', 'physical', 'sensortypes', 'SEEG', 'win_std', 0, ...
             'edit', struct('Comment', 'Power', 'TimeBands', [], 'Freqs', [], 'ClusterFuncTime', 'none', ...
@@ -129,8 +129,10 @@ trials.videos = bst_process('CallProcess', 'process_import_data_event', sFiles.b
                             'condition', '', 'eventname', events.videos, 'timewindow', [], 'epochtime', timewindow.video, ...
                             'createcond', 1, 'ignoreshort', 0, 'usectfcomp', 0, 'usessp', 0, 'freq', [], 'baseline', []);                            
 % save working filepaths and parameters
+%note = 'Patients without recordings in the left-vOT mask. N=7: sub-01, sub-02, sub-04, sub-05, sub-06, sub-07, sub-08.';
+note = 'Redo patient sub-05 with recovered triggers.';
 ftmp = fullfile(bdir, sprintf('ps03_PREP_%s.mat', datetime('now','Format', 'yyyy-MM-dd''T''HH:mm:SS')));
-save(ftmp, 'pFiles', 'sFiles', 'trials', 'subjects', 'n', 'notch_filters', 'freq_highpass', 'freq_lowpass', 'timewindow', 'baseline', 'events');
+save(ftmp, 'note', 'pFiles', 'sFiles', 'trials', 'subjects', 'n', 'notch_filters', 'freq_highpass', 'freq_lowpass', 'timewindow', 'baseline', 'events');
 %% ---------------------------
 
 %% monopolar and bipolar montages
