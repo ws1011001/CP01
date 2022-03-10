@@ -23,9 +23,11 @@ clc
 % mdir = '/CP01';
 % addpath(genpath('/CP01/mia'));
 % setup working path
-mdir = '/media/wang/BON/Projects/CP01';
-ddir = fullfile(mdir,'SEEG_LectureVWFA','derivatives');  % derivatives in the BIDS structure
-bdir = fullfile(ddir,'mia_SEEG_LectureVWFA');            % path to MIA database
+protocol = 'mia_SEEG_LectureVWFA';
+mdir = '/media/wang/BON/Projects/CP01';     % the project folder
+wdir = fullfile(mdir, 'SEEG_LectureVWFA');  % the main working folder 
+rdir = fullfile(wdir, 'derivatives');       % path to the BIDS derivatives
+bdir = fullfile(rdir, protocol);            % path to the MIA database
 % read the subjects list
 fid = fopen(fullfile(mdir,'CP01_subjects.txt'));
 subjects = textscan(fid,'%s');
@@ -33,37 +35,110 @@ fclose(fid);
 subjects = subjects{1};  % the subjects list
 n = length(subjects);
 % set processing parameters
-mtg = 'bipolar';  % montage
-tfa = 'morlet';   % time-frequency analysis
-freq_step = 10;
-freq_lobd = 40;
-freq_mdbd = 80;  % the gamma frequency to separate low and high gamma
-freq_upbd = 150;
+freq_step = 10;   % frequency decomposition step (Hz)
+freq_lobd = 40;   % lower boundary
+freq_mdbd = 80;   % the gamma frequency to separate low and high gamma
+freq_upbd = 150;  % upper boundary
 freq_bands = [freq_lobd, freq_mdbd; freq_mdbd, freq_upbd; freq_lobd, freq_upbd];
-nbands = size(freq_bands, 1);
-OPTIONS.nperm  = 5000;
-OPTIONS.smooth = 20;  % this number x 3 < number of ROIs (for successful smoothing)
-OPTIONS.threshp = 0.05;
-OPTIONS.win_noedges = [-0.2 0.6];
-OPTIONS.ylab1 = 'Gamma Activity (Z-score)';
+nbands = size(freq_bands, 1);  % number of frequency bands
+
+% OPTIONS.nperm  = 5000;
+% OPTIONS.smooth = 20;  % this number x 3 < number of ROIs (for successful smoothing)
+% OPTIONS.threshp = 0.05;
+% OPTIONS.win_noedges = [-0.2 0.6];
+% OPTIONS.ylab1 = 'Gamma Activity (Z-score)';
+
 % baseline = [-0.2,-0.01];  % baseline from -200ms to -10ms
 % timewindow = [-0.2,0.8];  % time-window of the epoch i.e. -200 ms to 800 ms
 % nperm = 10000;            % the number of randomizations in permutation tests
 % fdr_duration = 20;        % duration (in ms) for FDR correction in the time domain
-conditions = {'AAp', 'AAt', 'AVp', 'AVt', 'VAp', 'VAt', 'VVp', 'VVt'};
+conditions = {'AAp', 'AAt', 'AVp', 'AVt', 'VAp', 'VAt', 'VVp', 'VVt', ...
+              'Ap', 'Vp', 'Ap_long', 'Vp_long', 'WA', 'WV', 'PA', 'PV', 'WPA', 'WPV', ...
+              'SA', 'SV', 'FA', 'FV'};
 ncond = length(conditions);
 conditions_pairs = {{'AAp', 'AAt'}, {'AVp', 'AVt'}, {'VAp', 'VAt'}, {'VVp', 'VVt'}, {'AAp', 'AVp'}, {'VVp', 'VAp'}, {'AAt', 'VAt'}, {'VVt', 'AVt'}};
 % set switches
-isImpData = true;
 isCompChn = false;
 isPlotChn = false;
 isGetROIs = false;
 isCompCon = false;
 %% ---------------------------
 
+%% initialize the working file
+% create protocol if not exist
+if ~exist(bdir, 'dir')
+  fprintf('Create a MIA protocol %s in the folder %s. \n', protocol, rdir);
+  mkdir(rdir, protocol);  % create a database in the BIDS derivatives folder
+end
+% initialize the working file
+ftmp = fullfile(bdir, 'ps05_TFA_working.mat');
+% take a note
+pdate = datetime('now','Format', 'yyyy-MM-dd''T''HH:mm:SS');  % the date of the present processing
+pnote = 'Run the pre-processing pipeline using MIA for 10 subjects (from sub-01 to sub-10).';
+fprintf('%s \nStart at %s. \n\n', pnote, pdate);
+if exist(ftmp, 'file')
+  load(ftmp);  % read up the working file
+  commits(size(commits, 1) + 1, :) = {pnote, sprintf('%s', pdate)};  % add commit
+else
+  commits = {pnote, sprintf('%s', pdate)};  % add commit
+  save(ftmp, '*dir', 'subjects', 'n', 'freq*', 'nbands', 'conditions', 'ncond', 'commits')
+end
+%% ---------------------------
+
 %% Import data from brainstorm database
-if isImpData
-  
+if ~exist('miacfg', 'var')
+  bst_db = fullfile(rdir, 'brainstorm_SEEG_LectureVWFA', 'data');
+  for i = 1:n
+    subj = subjects{i};
+    sdir = fullfile(bdir, subj);
+    if ~exist(sdir, 'dir'); mkdir(sdir); end
+    fprintf('Import BST data into MIA to extract LFP signals for subject %s. \n', subj);
+    % copy BST data to the MIA database
+    for j = 1:ncond
+      icond = conditions{j};
+      if ~exist(fullfile(sdir, icond), 'dir'); mkdir(sdir, icond); end  % create a folder for this condition
+      copyfile(fullfile(bst_db, subj, icond), fullfile(sdir, icond));
+    end
+    % import BST data into MIA
+    config.maindir = sdir;
+    config.outdir = sdir;
+    miacfg.data(i).subject = subj;
+    miacfg.data(i).LFP = mia_s1_extract_bst_data(config);  % edited mia_s1_extract_bst_data
+  end
+  miacfg.LFP = true;
+  % update the working file
+  save(ftmp, 'miacfg', '-append');  
+end
+%% ---------------------------
+
+%% Extract frequency
+if ~isfield(miacfg, 'oscillation')
+  for i = 1:n
+    subj = subjects{i};
+    sdir = fullfile(bdir, subj);  
+    for iband = 1:nbands
+      freql = freq_bands(iband, 1);  % lower band
+      frequ = freq_bands(iband, 2);  % upper band           
+      fprintf('Extract oscillation amplitudes within frequency band %d to %d Hz for subject %s. \n', freql, frequ, subj);
+      % define config
+      config.outdir = sdir;
+      config.removeEvoked = true;  % remove evoked responses
+      config.freqs = freql:freq_step:frequ;
+      config.modetf = 'Morlet';
+      config.ncycles = 7;
+      % TFA on monopolar signals
+      config.mtg = 'monopolar';
+      TFA = sprintf('TFA_%s_%s_%d_%d_%d', config.mtg, config.modetf, freq_step, freql, frequ);
+      miacfg.data(i).(TFA) = mia_s4_compute_tf_bandwise(config);  % edited mia_s4_compute_tf_bandwise
+      % TFA on bipolar signals
+      config.mtg = 'bipolar';
+      TFA = sprintf('TFA_%s_%s_%d_%d_%d', config.mtg, config.modetf, freq_step, freql, frequ);
+      miacfg.data(i).(TFA) = mia_s4_compute_tf_bandwise(config);      
+    end
+  end
+  miacfg.oscillation = true;
+  % update the working file
+  save(ftmp, 'miacfg', '-append');   
 end
 %% ---------------------------
 
