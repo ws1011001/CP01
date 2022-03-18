@@ -77,15 +77,18 @@ end
 ftmp = fullfile(ddir, 'ps03_PREP_working.mat');
 % take a note
 pdate = datetime('now','Format', 'yyyy-MM-dd''T''HH:mm:SS');  % the date of the present processing
-pnote = 'Run the entire pre-processing pipeline for 10 subjects (from sub-01 to sub-10).';
+%pnote = 'Run the entire pre-processing pipeline for 10 subjects (from sub-01 to sub-10).';  # commit1
+pnote = 'Run epoch and quality control for 10 subjects.';  % commit2
 fprintf('%s \nStart at %s. \n\n', pnote, pdate);
 if exist(ftmp, 'file')
   load(ftmp);  % read up the working file
-  commits(size(commits, 1) + 1, :) = {pnote, sprintf('%s', pdate)};  % add commit
+  commits(end+1, :) = {pnote, sprintf('%s', pdate)};  % add commit
+  save(ftmp, 'commits', '-append');
 else
   commits = {pnote, sprintf('%s', pdate)};  % add commit
   save(ftmp, '*dir', 'subjects*', 'n', 'ptoken', 'notch_filters', 'freq*', 'events*', 'timewindow', 'baseline*', 'commits')
 end
+% update parameters if needed
 %% ---------------------------
 
 %% import raw data
@@ -193,27 +196,74 @@ if ~isempty(events_epoch)
 end                           
 %% ---------------------------
 
-%% monopolar and bipolar montages
-events_montage = fieldnames(events);
+%% Quality control: bad electrodes and trial rejection
+sFiles.QC = false;  % this step may be conducted several times to trade off channel rejection for trial rejection
+% reject bad channels that are marked by visual inspection
+if ~sFiles.QC
+  events_qc = fieldnames(events);
+else
+  events_qc = [];
+end
 if isfield(sFiles, 'trialdata')
-  events_montage = events_montage(~ismember(events_montage, fieldnames(sFiles.trialdata)));
+  events_qc = events_qc(~ismember(events_qc, fieldnames(sFiles.trialdata)));
+end
+if ~isempty(events_qc)
+  for i = 1:n
+    subj = subjects{i};
+    fqlc = fullfile(ddir, sprintf('%s_quality-control.log', subj));
+    sFiles.trialdata(i).subject = subj;
+    badchn = subjects_info.electrodes_bad{i};  % get bad electrodes
+    mtg_tmp = sprintf('%s: SEEG (orig)[tmp]', subj);  % temporary montage for trial rejection
+    % group all conditions for each subject
+    diary(fqlc);
+    for j = 1:length(events_qc)
+      ievt = events_qc{j};
+      % extract trials of this event
+      fprintf('Extract trials for the event %s. \n', ievt);
+      trials_evt = sFiles.trials.(ievt);  % get trials of this event
+      trials_evt = {trials_evt(ismember({trials_evt.SubjectName}, subj)).FileName};
+      sFiles.trialdata(i).(ievt) = cellfun(@(x) fullfile(ddir, x), trials_evt, 'UniformOutput', 0);  
+      % mark bad channels for this event
+      if ~isempty(badchn)  % empty means no bad electrodes
+        fprintf('Mark bad electrodes: %s for the event: %s for the subject: %s. \n', badchn, ievt, subj);
+        tree_set_channelflag(sFiles.trialdata(i).(ievt), 'ClearAllBad');  % cleanup previous records
+        tree_set_channelflag(sFiles.trialdata(i).(ievt), 'AddBad', badchn);
+      end
+      % report bad trials for this event
+      bst_process('CallProcess', 'process_evt_detect_seeg_es', sFiles.trialdata(i).(ievt), [], 'sensortypes', 'SEEG', 'montage', mtg_tmp, ... 
+                  'threshold0', 5, 'threshold1', 3, 'threshold2', -1, 'threshold3', -1, 'threshold4', 10, ...
+                  'badevtfile', {'', ''}, 'ismarkbadtrials', 1, 'isaddevent', 1);
+    end
+    diary off
+    % update sFiles
+    sFiles.trialdata(i).QC_log = fqlc;
+    sFiles.trialdata(i).bad_electrodes = badchn;  % record bad chennels    
+  end 
+  % update the working file
+  %sFiles.QC = true;
+  save(ftmp, 'sFiles', '-append');
+end
+%% ---------------------------
+
+%% monopolar and bipolar montages
+if sFiles.QC
+  events_montage = fieldnames(events);
+else
+  events_montage = [];
+end
+if isfield(sFiles, 'monopolar')
+  events_montage = events_montage(~ismember(events_montage, fieldnames(sFiles.monopolar)));
 end
 if ~isempty(events_montage)
   for i = 1:n
     subj = subjects{i};
     mon1 = sprintf('%s: SEEG (orig)[tmp]', subj);       % monopolar
     mon2 = sprintf('%s: SEEG (bipolar 2)[tmp]', subj);  % bipolar2
-    sFiles.trialdata(i).subject = subj;
-    sFiles.monopolar(i).subject = subj;
-    sFiles.bipolar(i).subject = subj;
     % do montage for each event
     for j = 1:length(events_montage)
       ievt = events_montage{j};
       % group all conditions
-      fprintf('Apply montage %s and %s for the event %s. \n', mon1, mon2, ievt);
-      trials_evt = sFiles.trials.(ievt);  % get trials of this event
-      trials_evt = {trials_evt(ismember({trials_evt.SubjectName}, subj)).FileName};
-      sFiles.trialdata(i).(ievt) = cellfun(@(x) fullfile(ddir, x), trials_evt, 'UniformOutput', 0);  
+      fprintf('Apply montage %s and %s for the event %s. \n', mon1, mon2, ievt); 
       % apply monopolar montage (n)
       sFiles.monopolar(i).(ievt) = bst_process('CallProcess', 'process_montage_apply', sFiles.trialdata(i).(ievt), [], 'montage', mon1, 'createchan', 1);
       % apply bipolar2 montage (m)
@@ -226,7 +276,11 @@ end
 %% ---------------------------
 
 %% baseline normalization
-events_norm = fieldnames(events);
+if isfield(sFiles, 'monopolar')
+  events_norm = fieldnames(events);
+else
+  events_norm = [];
+end
 if isfield(sFiles, 'monopolar_norm')
   events_norm = events_norm(~ismember(events_norm, fieldnames(sFiles.monopolar_norm)));
 end
@@ -254,3 +308,4 @@ if ~isempty(events_norm)
   save(ftmp, 'sFiles', '-append');   
 end
 %% ---------------------------
+
