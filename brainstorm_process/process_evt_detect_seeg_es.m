@@ -31,12 +31,12 @@ end
 %% ===== GET DESCRIPTION =====
 function sProcess = GetDescription() %#ok<DEFNU>
     % Description the process
-    sProcess.Comment     = 'Detect potential epileptic artifacts';
+    sProcess.Comment     = 'Detect epileptic artifacts';
     sProcess.FileTag     = 'ES';
     sProcess.Category    = 'Custom';
     sProcess.SubGroup    = 'Events';
     sProcess.Index       = 46;  % the same Index as PROCESS_EVT_DETECT_BADSEGMENT
-    sProcess.Description = 'See SI in Hirshorn et al., 2016, PNAS.';
+    sProcess.Description = 'TBA.';
     % Definition of the input accepted by this process
     sProcess.InputTypes  = {'data'};
     sProcess.OutputTypes = {'data'};
@@ -57,22 +57,24 @@ function sProcess = GetDescription() %#ok<DEFNU>
     sProcess.options.separator1.Type = 'separator';
     sProcess.options.separator1.Comment = ' ';    
     % Title
-    sProcess.options.label11.Comment = '<BR><B>Hirshorn et al., 2016</B>:';
+    sProcess.options.label11.Comment = '<BR><B>Examine Peak and Gradient:</B>:';
     sProcess.options.label11.Type    = 'label';
-    % Threshold0 - SDs from the average amplitude (across trials)
-    sProcess.options.threshold0.Comment = 'The difference between peak amplitude and mean amplitude (across trials) is greater than: ';
+    % Threshold0 - compare a peak with the Mean amplitude across trials, in terms of SD
+    sProcess.options.threshold0.Comment = 'The difference between a Peak and the Mean of peaks across trials is greater than: ';
     sProcess.options.threshold0.Type    = 'value';
     sProcess.options.threshold0.Value   = {5, 'SDs', 0};    
-    % Threshold1 - SDs from the average amplitude (within trial)
-    sProcess.options.threshold1.Comment = 'The difference between peak amplitude and mean amplitude (within trials) is greater than: ';
-    sProcess.options.threshold1.Type    = 'value';
-    sProcess.options.threshold1.Value   = {1000, 'SDs', 0};
+    % Threshold1 - exmaine outliers within trial
+    sProcess.options.label22.Comment = 'At least one time point with value and gradient that are beyond: ';
+    sProcess.options.label22.Type    = 'label';    
+    sProcess.options.threshold1.Comment = {'None    ', 'Inner Fence (Q1-1.5IQ, Q3+1.5IQ)    ', 'Upper Fence (Q1-3IQ, Q3+3IQ)', ''};
+    sProcess.options.threshold1.Type    = 'radio_line';
+    sProcess.options.threshold1.Value   = 1;
     % Threshold2 - absolute upper limit
-    sProcess.options.threshold2.Comment = 'Peak amplitude (abs.) is greater than: ';
+    sProcess.options.threshold2.Comment = 'Absolute Peak is greater than: ';
     sProcess.options.threshold2.Type    = 'value';
     sProcess.options.threshold2.Value   = {350, 'uV', []};    
     % Threshold3 - variation between consecutive time points
-    sProcess.options.threshold3.Comment = 'Variation between consecutive points (abs.) is greater than: ';
+    sProcess.options.threshold3.Comment = 'Absolute Gradient is greater than: ';
     sProcess.options.threshold3.Type    = 'value';
     sProcess.options.threshold3.Value   = {25, 'uV', []}; 
     % Separator
@@ -84,7 +86,7 @@ function sProcess = GetDescription() %#ok<DEFNU>
     % Threshold4 - bad channel threshold : If a channel led to more than X% of the trials being rejected, this channel was instead rejected.
     sProcess.options.threshold4.Comment = 'Examine channels that led to the rejetion of trials more than: ';
     sProcess.options.threshold4.Type    = 'value';
-    sProcess.options.threshold4.Value   = {20, '%', []};     
+    sProcess.options.threshold4.Value   = {50, '%', []};     
     % Validation with visually detected BAD events
     SelectOptions = {...
         '', ...                               % Filename
@@ -96,20 +98,17 @@ function sProcess = GetDescription() %#ok<DEFNU>
         'files', ...                          % Selection mode: {files,dirs,files_and_dirs}
         bst_get('FileFilters', 'events'), ... % Get all the available file formats
         'EventsIn'};                          % DefaultFormats: {ChannelIn,DataIn,DipolesIn,EventsIn,MriIn,NoiseCovIn,ResultsIn,SspIn,SurfaceIn,TimefreqIn
-    sProcess.options.badevtfile.Comment = 'Select event file with BAD segments: ';
+    sProcess.options.badevtfile.Comment = 'Select event file with visually marked BAD segments: ';
     sProcess.options.badevtfile.Type    = 'filename';
-    sProcess.options.badevtfile.Value   = SelectOptions;
-    % BAD segments comment
-    sProcess.options.label22.Comment = '<I><FONT color="#777777">Validate the criteria by estimating the overalp between the rejected trials and visually detected BAD segments of raw data.</FONT></I>';
-    sProcess.options.label22.Type    = 'label';    
+    sProcess.options.badevtfile.Value   = SelectOptions;  
     % reject trials
     sProcess.options.ismarkbadtrials.Comment = 'Reject trials';
     sProcess.options.ismarkbadtrials.Type    = 'checkbox';
-    sProcess.options.ismarkbadtrials.Value   = 1;
+    sProcess.options.ismarkbadtrials.Value   = 0;
     % mark trials
     sProcess.options.isaddevent.Comment = 'Add the reason for rejection as event';
     sProcess.options.isaddevent.Type    = 'checkbox';
-    sProcess.options.isaddevent.Value   = 1;    
+    sProcess.options.isaddevent.Value   = 0;    
 end
 
 
@@ -122,17 +121,18 @@ end
 %% ===== RUN =====
 function OutputFiles = Run(sProcess, sInputs) %#ok<DEFNU>
     OutputFiles = {};
+    n = length(sInputs);  % number of trials
     % ===== GET OPTIONS ===== 
     % define channels
     SensorTypes = sProcess.options.sensortypes.Value;
     % montage name
-    MontageName  = sProcess.options.montage.Value;
+    MontageName = sProcess.options.montage.Value;
     % get thresholds
-    ThresSDat   = sProcess.options.threshold0.Value{1};         % across-trial SDs
-    ThresSDwt   = sProcess.options.threshold1.Value{1};         % within-trial SDs
-    ThresPeak   = sProcess.options.threshold2.Value{1} / 10e5;  % peak amp.; convert microvolts to volts
-    ThresVars   = sProcess.options.threshold3.Value{1} / 10e5;  % variation between consecutive points; convert microvolts to volts  
-    ThresChan   = sProcess.options.threshold4.Value{1};         % potential BAD hannels
+    ThresXSDs = sProcess.options.threshold0.Value{1};         % > mean + X SDs (across-trial)
+    FenceType = sProcess.options.threshold1.Value;            % identify outliers within a trial
+    ThresPeak = sProcess.options.threshold2.Value{1} / 10e5;  % peak; convert microvolts to volts
+    ThresGrad = sProcess.options.threshold3.Value{1} / 10e5;  % gradient; convert microvolts to volts  
+    ThresChan = sProcess.options.threshold4.Value{1};         % suspected BAD hannels
     % read BAD_suspected events
     EventFile  = sProcess.options.badevtfile.Value{1};  % get filenames to import
     if exist(EventFile,'file')
@@ -143,48 +143,47 @@ function OutputFiles = Run(sProcess, sInputs) %#ok<DEFNU>
     end    
     % if mark bad trials or only output reports
     ismarkbadtrials = sProcess.options.ismarkbadtrials.Value;
-    isaddevent = sProcess.options.isaddevent.Value;
+    isaddevent      = sProcess.options.isaddevent.Value;
     
     % ===== APPLY MONTAGE =====
     fprintf('Calculate temporary montage [%s] for trial rejection.\n', MontageName);
-    MonopolarInputs = sInputs;
-    MontageFiles = bst_process('CallProcess', 'process_montage_apply', {sInputs.FileName}, [], 'montage', MontageName, 'createchan', 1);    
-    sInputs = bst_process('GetInputStruct', {MontageFiles.FileName});  % use montage files (default: bipolar2) as inputs    
-
+    rawInputs = sInputs;
+    MontageFiles    = bst_process('CallProcess', 'process_montage_apply', {sInputs.FileName}, [], 'montage', MontageName, 'createchan', 1);    
+    sInputs         = bst_process('GetInputStruct', {MontageFiles.FileName});  % use montage files (default: bipolar2) as inputs    
     fprintf('------------------------------------------------------------------------------------------------------\n');
-    fprintf('The following parameters were used to detect artifacts for %d trials: \n%d SDs (across trials), \n%d SDs (within trial), \n%d uV Peak Amplitude, \n%d uV consecutive variation.\n',...
-      length(sInputs), ThresSDat, ThresSDwt, sProcess.options.threshold2.Value{1} , sProcess.options.threshold3.Value{1});
     
     % Get current progressbar position
-    progressPos = bst_progress('get');    
+    %progressPos = bst_progress('get');    
     
     % ===== INITIALIZE VECTORS =====    
     % select good channels - all trials have the same configuration of channels
-    ChannelConfig = in_bst_channel(sInputs(1).ChannelFile);
-    ChannelSelected = channel_find(ChannelConfig.Channel, SensorTypes);
-    ChannelNames = {ChannelConfig.Channel(:).Name}';
-    ChannelMarks = in_bst_data(sInputs(1).FileName, 'ChannelFlag');
-    ChannelGood = ChannelMarks.ChannelFlag == 1;
-    ChannelGoodNames = ChannelNames(ChannelSelected(ChannelGood(ChannelSelected)));
+    ChannelConfig    = in_bst_channel(sInputs(1).ChannelFile);
+    ChannelSelected  = channel_find(ChannelConfig.Channel, SensorTypes);
+    ChannelNames     = {ChannelConfig.Channel(:).Name}';
+    ChannelMarks     = in_bst_data(sInputs(1).FileName, 'ChannelFlag');
+    ChannelGood      = ChannelMarks.ChannelFlag == 1;
+    ChannelGood      = ChannelSelected(ChannelGood(ChannelSelected));
+    ChannelGoodNames = ChannelNames(ChannelGood);
     
     % initialize the trial rejection vectors
-    iOk = false(1, length(sInputs));
-    ChannelTrialsMeans = zeros(sum(ChannelGood), length(sInputs));
-    ChannelTrialsOutSDat = zeros(sum(ChannelGood), length(sInputs));
-    ChannelTrialsOutSDwt = zeros(sum(ChannelGood), length(sInputs));
-    ChannelTrialsOutPeak = zeros(sum(ChannelGood), length(sInputs));
-    ChannelTrialsOutVars = zeros(sum(ChannelGood), length(sInputs));
+    nCh = length(ChannelGood);
+    iOk = false(1, n);
+    ChannelTrialsPeaks    = zeros(nCh, n);
+    ChannelTrialsFenceOut = zeros(nCh, n);
+    ChannelTrialsPeaksOut = zeros(nCh, n);
+    ChannelTrialsGradsOut = zeros(nCh, n);
     
     % ===== For each trial =====
-    for iFile = 1:length(sInputs)
+    for iFile = 1:n
         % Progress bar
-        bst_progress('text', 'Reading trial to process...');
-        % ===== GET DATA =====
+        %bst_progress('text', 'Reading trial to process...');
+
         % Load epochs        
         DataES = in_bst_data(sInputs(iFile).FileName, 'F', 'Time', 'ChannelFlag', 'Comment');        
+        [DataES.TrialType, DataES.TrialIndex] = commentsplit(DataES.Comment);
         DataES.ChannelGood = ChannelGoodNames;
-        DataES.FSelected = DataES.F(ChannelSelected(ChannelGood(ChannelSelected)), :);
-        [DataES.TrialType, DataES.TrialIndex]=commentsplit(DataES.Comment);
+        DataES.FGood       = DataES.F(ChannelGood, :);        
+        DataES.TimeN       = length(DataES.Time);
         % check overlap with the bad segments
         if ~isempty(EventBadTime)
           [DataES.TrialEpoch, DataES.BadOverlaps] = badvalidate(DataES.TrialType, DataES.TrialIndex, DataES.Time, EventType, EventTime, EventBadTime);
@@ -192,72 +191,102 @@ function OutputFiles = Run(sProcess, sInputs) %#ok<DEFNU>
           DataES.BadOverlaps = [];
         end
         
-        % ===== automatic detection Hirshorn 2016 =====
-        DataES.TimeN = length(DataES.Time);
-        [DataES.FPeaks, DataES.FPeaksIndex] = max(abs(DataES.FSelected), [], 2);
-        % calculate the average and std for each channel
-        DataES.FMeans = mean(DataES.FSelected, 2);
-        DataES.FStds = std(DataES.FSelected, 0, 2);
-        % peak amplitude x SDs away from the Mean across the rest of the trial
-        DataES.FPeaksOut = DataES.FSelected(logical(repmat(1:DataES.TimeN, length(DataES.ChannelGood), 1) ~= DataES.FPeaksIndex));
-        DataES.FPeaksOut = reshape(DataES.FPeaksOut, [], DataES.TimeN - 1);
-        DataES.FPeaksOutMeans = mean(DataES.FPeaksOut, 2);
-        %DataES.FStds = std(DataES.FPeaksOut, 0, 2);
-        DataES.checkThresSDwt = logical(DataES.FPeaks > ThresSDwt * abs(DataES.FStds) + abs(DataES.FPeaksOutMeans));
-        % peak amplitude greater than the upper limit (350uV by default)
-        DataES.checkThresPeak = logical(DataES.FPeaks > ThresPeak);
-        % variation threshold between consecutive points (25uV by default)
-        DataES.FConsecutiveVariation = diff(DataES.FSelected, 1, 2);
-        DataES.checkThresVars = any(DataES.FConsecutiveVariation > ThresVars, 2);
-        % count number of channels with potential ES        
-        DataES.ChannelBadSDwt = DataES.ChannelGood(DataES.checkThresSDwt);
-        DataES.ChannelBadPeak = DataES.ChannelGood(DataES.checkThresPeak);
-        DataES.ChannelBadVars = DataES.ChannelGood(DataES.checkThresVars);
+        % extracts Peaks
+        [DataES.FPeaks, DataES.FPeaksIndex] = max(abs(DataES.FGood), [], 2);
+        ChannelTrialsPeaks(:, iFile) = DataES.FPeaks;
+        % calculate temporal gradient (variation threshold between consecutive points)
+        DataES.FGrad = diff(DataES.FGood, 1, 2);
+        % identify outliers by examing fences (cf. https://www.itl.nist.gov/div898/handbook/prc/section1/prc16.htm)
+        if FenceType ~= 1
+          FenceWeight = 1.5 * FenceType;
+          % calculate Q1, Q3 and IQ
+          DataES.FGoodQ1 = prctile(DataES.FGood, 25, 2);
+          DataES.FGoodQ3 = prctile(DataES.FGood, 75, 2);
+          DataES.FGoodIQ = DataES.FGoodQ3 - DataES.FGoodQ1;
+          DataES.FGradQ1 = prctile(DataES.FGrad, 25, 2);
+          DataES.FGradQ3 = prctile(DataES.FGrad, 75, 2);
+          DataES.FGradIQ = DataES.FGradQ3 - DataES.FGradQ1;
+          % identify outlier time-points
+          Outlier1 = (DataES.FGood < (DataES.FGoodQ1 - DataES.FGoodIQ * FenceWeight)) + (DataES.FGood > (DataES.FGoodQ3 + DataES.FGoodIQ * FenceWeight));
+          Outlier2 = (DataES.FGrad < (DataES.FGradQ1 - DataES.FGradIQ * FenceWeight)) + (DataES.FGrad > (DataES.FGradQ3 + DataES.FGradIQ * FenceWeight));
+          DataES.checkFenceOuts  = logical(sum(Outlier1(:, 2:end) .* Outlier2, 2));
+          DataES.ChannelBadFence = DataES.ChannelGood(DataES.checkFenceOuts);
+        else
+          DataES.checkFenceOuts  = 0; 
+          DataES.ChannelBadFence = 0;
+        end
+        ChannelTrialsFenceOut(:, iFile) = DataES.checkFenceOuts;
+        % abs. peak amplitude greater than the upper limit (350uV by default)
+        if ThresPeak > 0
+          DataES.checkThresPeak  = DataES.FPeaks > ThresPeak;
+          DataES.ChannelBadPeaks = DataES.ChannelGood(DataES.checkThresPeak);
+        else
+          DataES.checkThresPeak  = 0;
+          DataES.ChannelBadPeaks = 0;
+        end
+        ChannelTrialsPeaksOut(:, iFile) = DataES.checkThresPeak;
+        % abs. gradient greater than the upper limit (25uV by default)
+        if ThresGrad > 0
+          DataES.checkThresGrad  = any(DataES.FGrad > ThresGrad, 2);
+          DataES.ChannelBadGrads = DataES.ChannelGood(DataES.checkThresGrad);
+        else
+          DataES.checkThresGrad  = 0;
+          DataES.ChannelBadGrads = 0;
+        end
+        ChannelTrialsGradsOut(:, iFile) = DataES.checkThresGrad;                          
         
-        % store channel-wise data
-        ChannelTrialsMeans(:, iFile) = DataES.FMeans;
-        ChannelTrialsOutSDwt(:, iFile) = DataES.checkThresSDwt;
-        ChannelTrialsOutPeak(:, iFile) = DataES.checkThresPeak;
-        ChannelTrialsOutVars(:, iFile) = DataES.checkThresVars;
-        
-        % ===== SAVE RESULT =====
         % Progress bar
-        bst_progress('text', 'Saving results...');
-        bst_progress('set', progressPos + round(3 * iFile / length(sInputs) / 3 * 100));
+        %bst_progress('text', 'Saving results...');
+        %bst_progress('set', progressPos + round(3 * iFile / n / 3 * 100));
         % save DataES to the trial structure
         save(file_fullpath(sInputs(iFile).FileName), 'DataES', '-append');        
     end
     
-    % reject trials with peak amplitude x SDs away from the mean across the rest of the trials
-    ChannelTrialsStds = abs(ThresSDat * std(ChannelTrialsMeans, [], 2));  % number of channels
-    fprintf('------------------------------------------------------------------------------------------------------\n');
-    fprintf('======== Trial-wise Report ========\n');
-    for iTrial = 1:length(sInputs)
+    % reject trials with peak > x SDs away from the mean across all trials
+    ChannelTrialsMean = mean(ChannelTrialsPeaks, 2);
+    ChannelTrialsStds = std(ChannelTrialsPeaks, [], 2);
+    ChannelTrialsPeaksSDs = ChannelTrialsPeaks > ThresXSDs .* ChannelTrialsStds + ChannelTrialsMean;
+    
+    fprintf('\n======================================== Trial-wise Report ========================================\n');
+    for iTrial = 1:n
       % read ES data
       load(file_fullpath(sInputs(iTrial).FileName), 'DataES');
       % read events of monopolar file
-      load(file_fullpath(MonopolarInputs(iTrial).FileName), 'Events');
-      % extract the mean values for both this trial and the rest of trials
-      iTrialMean = ChannelTrialsMeans(:, iTrial);
-      ChannelOtherTrialsMeans = ChannelTrialsMeans;
-      ChannelOtherTrialsMeans(:, iTrial) = [];
-      % check this trial
-      ChannelTrialsOutSDat(:, iTrial) = iTrialMean > ChannelTrialsStds + abs(mean(ChannelOtherTrialsMeans, 2));  
-      DataES.checkThresSDat = ChannelTrialsOutSDat(:, iTrial);
-      DataES.ChannelBadSDat = ChannelGoodNames(logical(DataES.checkThresSDat));      
+      load(file_fullpath(rawInputs(iTrial).FileName), 'Events');
+
+      DataES.checkPeaksXSDs = ChannelTrialsPeaksSDs(:, iTrial);
+      if any(DataES.checkPeaksXSDs)
+        DataES.ChannelBadXSDs = DataES.ChannelGood(DataES.checkPeaksXSDs);   
+      else
+        DataES.ChannelBadXSDs = 0;
+      end
       
       % report the detected event and related channels
-      if any(DataES.checkThresSDat) || any(DataES.checkThresSDwt) || any(DataES.checkThresPeak) || any(DataES.checkThresVars)
+      if any(DataES.BadOverlaps) || any(DataES.checkFenceOuts) || any(DataES.checkThresPeak) || any(DataES.checkThresGrad) || any(DataES.checkPeaksXSDs)
+        % number of channels that have bad trials
+        DataES.ChannelBadN = sum((DataES.checkFenceOuts + DataES.checkThresPeak + DataES.checkThresGrad + DataES.checkPeaksXSDs) ~= 0);
         % report detected trial and corresponding channels                       
-        criterion = '';
+        criterion = '[Trial rejected]:';
         chan2disp = '';
-        if any(DataES.BadOverlaps); criterion = 'overlaps with BAD segments + '; end
-        if any(DataES.checkThresSDwt); criterion = [criterion, '[wtSD]']; chan2disp = sprintf('(%s), ', DataES.ChannelBadSDwt{:}); end
-        if any(DataES.checkThresSDat); criterion = [criterion, '[atSD]']; chan2disp = [chan2disp, '|', sprintf('(%s), ', DataES.ChannelBadSDat{:})]; end
-        if any(DataES.checkThresPeak); criterion = [criterion, '[Peak]']; chan2disp = [chan2disp, '|', sprintf('(%s), ', DataES.ChannelBadPeak{:})]; end                
-        if any(DataES.checkThresVars); criterion = [criterion, '[Vars]']; chan2disp = [chan2disp, '|', sprintf('(%s), ', DataES.ChannelBadVars{:})]; end  
-        DataES.ChannelBadN = sum((DataES.checkThresSDat + DataES.checkThresSDwt + DataES.checkThresPeak + DataES.checkThresVars) ~= 0);
-        fprintf('Trial %s (#%d) %s: spikes are detected in %d channels %s.\n', DataES.TrialType, DataES.TrialIndex, criterion, DataES.ChannelBadN, chan2disp)    
+        if any(DataES.BadOverlaps); criterion = ' it overlaps with the BAD segments,'; end
+        if any(DataES.checkFenceOuts)
+          criterion = [criterion, ' it has at least one time-point as outlier,']; 
+          chan2disp = sprintf('[%s] ', DataES.ChannelBadFence{:});
+        end
+        if any(DataES.checkThresPeak)
+          criterion = [criterion, sprintf(' its peak (abs.) > %d uV,', sProcess.options.threshold2.Value{1})];
+          chan2disp = [chan2disp, '|', sprintf('[%s] ', DataES.ChannelBadPeaks{:})]; 
+        end
+        if any(DataES.checkThresGrad)
+          criterion = [criterion, sprintf(' its max gradient (abs.) > %d uV,', sProcess.options.threshold3.Value{1})];
+          chan2disp = [chan2disp, '|', sprintf('[%s] ', DataES.ChannelBadGrads{:})];
+        end                
+        if any(DataES.checkPeaksXSDs)
+          criterion = [criterion, ' its peak is an outlier among all trials,']; 
+          chan2disp = [chan2disp, '|', sprintf('(%s), ', DataES.ChannelBadXSDs{:})]; 
+        end  
+        criterion = [criterion, sprintf(' and its artifacts are detected in %d channels', DataES.ChannelBadN)];        
+        fprintf('Detect Trial %s (#%d) as bad trial because %s: %s. \n', DataES.TrialType, DataES.TrialIndex, criterion, chan2disp);    
         % add ES as an event marker to this trial
         if isaddevent
           if isempty(Events)
@@ -270,6 +299,10 @@ function OutputFiles = Run(sProcess, sInputs) %#ok<DEFNU>
             Events(1).channels = {[]};
             Events(1).notes = {['Channels: ', chan2disp]};  % bad channels
           else
+            % remove old comments
+            oldEvts = cell2mat(cellfun(@(x) contains(x, 'Trial'), {Events.label}, 'UniformOutput', 0));
+            Events(oldEvts) = [];
+            % add criterion
             iEvt = length(Events) + 1;
             Events(iEvt).label = criterion;                    % mark the reason to reject this trial
             Events(iEvt).color = [0, 0.5, 0];                  % dark green
@@ -281,7 +314,7 @@ function OutputFiles = Run(sProcess, sInputs) %#ok<DEFNU>
             Events(iEvt).notes = {['Channels: ', chan2disp]};  % bad channels            
           end
         end
-        save(file_fullpath(MonopolarInputs(iTrial).FileName), 'Events', '-append');  % save events to the monopolar trial
+        save(file_fullpath(rawInputs(iTrial).FileName), 'Events', '-append');  % save events to the monopolar trial
       elseif any(DataES.BadOverlaps)
         fprintf('Trial %s (#%d) is in BAD segments but not detected by our method.\n', DataES.TrialType, DataES.TrialIndex)
       else
@@ -292,53 +325,57 @@ function OutputFiles = Run(sProcess, sInputs) %#ok<DEFNU>
     end
     
     % report the percent of rejected trials
-    ChannelTrialsOutAll = ChannelTrialsOutSDat + ChannelTrialsOutSDwt + ChannelTrialsOutPeak + ChannelTrialsOutVars;
+    ChannelTrialsOutAll =  ChannelTrialsFenceOut + ChannelTrialsPeaksOut + ChannelTrialsGradsOut + ChannelTrialsPeaksSDs;
     TrialsOutN = nnz(sum(ChannelTrialsOutAll));
     fprintf('------------------------------------------------------------------------------------------------------\n');
-    fprintf('%d out of %d trials are rejected in total.\n', TrialsOutN, length(sInputs));
-    fprintf('%d trials are rejected according to the across-trials %d SDs criteria.\n', nnz(sum(ChannelTrialsOutSDat)), ThresSDat);
-    fprintf('%d trials are rejected according to the within-trial %d SDs criteria.\n', nnz(sum(ChannelTrialsOutSDwt)), ThresSDwt);
-    fprintf('%d trials are rejected according to the peak amplitude criteria.\n', nnz(sum(ChannelTrialsOutPeak)));
-    fprintf('%d trials are rejected according to the consecutive variation criteria.\n', nnz(sum(ChannelTrialsOutVars)));
+    fprintf('%d out of %d trials are rejected in total. \n', TrialsOutN, n);
+    fprintf('%d trials are rejected because the peak is %d SDs away from the mean across trials. \n', nnz(sum(ChannelTrialsPeaksSDs)), ThresXSDs);
+    fprintf('%d trials are rejected because of temporal outliers within trial. \n', nnz(sum(ChannelTrialsFenceOut)));
+    fprintf('%d trials are rejected because the peak is higher than %d uV. \n', nnz(sum(ChannelTrialsPeaksOut)), sProcess.options.threshold2.Value{1});
+    fprintf('%d trials are rejected because the max gradient is higher than %d uV. \n', nnz(sum(ChannelTrialsGradsOut)), sProcess.options.threshold3.Value{1});
+    fprintf('------------------------------------------------------------------------------------------------------\n');
     
     % report bad channels
-    fprintf('------------------------------------------------------------------------------------------------------\n');
-    fprintf('======== Channel-wise Report ========\n');
-    fprintf('Out of %d rejected trials : \n', TrialsOutN);
+    fprintf('\n======================================== Channel-wise Report ========================================\n');
+    fprintf('Out of %d trials : \n', n);
     chan2reject = [];
     for iChannel = 1:length(ChannelGoodNames)
       iChannelTrialsOutAll = ChannelTrialsOutAll(iChannel, :);
       iChannelTrialsOutN = nnz(iChannelTrialsOutAll);
-      iChannelTrialsOutRatio = iChannelTrialsOutN / TrialsOutN;
+      iChannelTrialsOutRatio = iChannelTrialsOutN / n;
       if iChannelTrialsOutRatio > 0
-        fprintf('%.2f%% trials are rejected due to the channel %s.\n', iChannelTrialsOutRatio*100, ChannelGoodNames{iChannel});
+        fprintf('%.2f%% trials are rejected due to the channel %s. \n', iChannelTrialsOutRatio*100, ChannelGoodNames{iChannel});
         if iChannelTrialsOutRatio >= ThresChan/100
           chan2reject = [chan2reject, iChannel];
         end
       end
     end
-    ChannelRejectNames = ChannelGoodNames(chan2reject);
-    ChannelTrialsOutAllUpdate = ChannelTrialsOutAll;
-    ChannelTrialsOutAllUpdate(chan2reject, :) = [];  % remove bad channels
-    fprintf('In summary, each of the %d channels (%s) led to at least %d%% trials being rejected.\n', length(chan2reject), sprintf('[%s]', ChannelRejectNames{:}), ThresChan);
-    fprintf('After removing the channels listed above, the number of rejected trials should be %d.\n', nnz(sum(ChannelTrialsOutAllUpdate)));
+    if ~isempty(chan2reject)
+      ChannelRejectNames  = ChannelGoodNames(chan2reject);
+      ChannelTrialsOutNew = ChannelTrialsOutAll;
+      ChannelTrialsOutNew(chan2reject, :) = [];  % remove bad channels
+      fprintf('In summary, each of the %d channels (%s) led to at least %d%% trials being rejected. \n', length(chan2reject), sprintf('[%s]', ChannelRejectNames{:}), ThresChan);
+      fprintf('After removing the channels listed above, the number of rejected trials should be %d. \n', nnz(sum(ChannelTrialsOutNew)));
+    else
+      fprintf('No channel led to more than %d%% trials being rejected. \n', ThresChan);
+    end
     
     % Return all the input files and bad files
     if ismarkbadtrials
-      OutputFiles = {sInputs(iOk).FileName};
-      BadFiles = {sInputs(~iOk).FileName};
+      OutputFiles = {rawInputs(iOk).FileName};
+      BadFiles    = {rawInputs(~iOk).FileName};
       [BadPaths, BadFiles] = cellfun(@(x) fileparts(file_fullpath(x)), BadFiles, 'UniformOutput', 0);  % extract filenames that are rejected
       BadFiles = cellfun(@(x) sprintf('%s.mat', x), BadFiles, 'UniformOutput', 0);                     % add file extension - .mat
       OutputPaths = unique(BadPaths);
-      for iOutputPath = 1:length(OutputPaths)
+      for iOutputPath = 1:length(OutputPaths)  % usually for each condition
         iBadTrials = cell2mat(cellfun(@(x) strcmp(x, OutputPaths{iOutputPath}), BadPaths, 'UniformOutput', 0));
         BadTrials = BadFiles(logical(iBadTrials))';
         save(fullfile(OutputPaths{iOutputPath}, 'brainstormstudy.mat'), 'BadTrials', '-append');
       end
     end
-    % ===== DELETE BIPOLAR FILES =====
-    fprintf('Clean up temporary montage [%s] files.\n', MontageName);
-    bst_process('CallProcess', 'process_delete', MontageFiles, [], 'target', 2);  % Delete folders
+    % ===== DELETE TEMPORARY FILES =====
+    fprintf('Clean up temporary montage [%s] files. \n', MontageName);
+    bst_process('CallProcess', 'process_delete', {sInputs.FileName}, [], 'target', 2);  % 'target' = 1 only delete selected files; 2 delete folder
 end
 
 %% sub-functions
