@@ -78,7 +78,8 @@ ftmp = fullfile(ddir, 'ps03_PREP_working.mat');
 % take a note
 pdate = datetime('now','Format', 'yyyy-MM-dd''T''HH:mm:SS');  % the date of the present processing
 %pnote = 'Run the entire pre-processing pipeline for 10 subjects (from sub-01 to sub-10).';  # commit1
-pnote = 'Run epoch and quality control for 10 subjects.';  % commit2
+%pnote = 'Run epoch and quality control for 10 subjects.';  % commit2
+pnote = 'Run quality control for sub-03, sub-09 and sub-10.';  % commit3
 fprintf('%s \nStart at %s. \n\n', pnote, pdate);
 if exist(ftmp, 'file')
   load(ftmp);  % read up the working file
@@ -208,14 +209,15 @@ if isfield(sFiles, 'trialdata')
   events_qc = events_qc(~ismember(events_qc, fieldnames(sFiles.trialdata)));
 end
 if ~isempty(events_qc)
-  for i = 1:n
+  for i = [3]  %1:n
     subj = subjects{i};
     fqlc = fullfile(ddir, sprintf('%s_quality-control.log', subj));
     sFiles.trialdata(i).subject = subj;
-    badchn = subjects_info.electrodes_bad{i};  % get bad electrodes
+    badchn = subjects_info.electrodes_bad{i};  % get bad electrodes    
     mtg_tmp = sprintf('%s: SEEG (orig)[tmp]', subj);  % temporary montage for trial rejection
     % group all conditions for each subject
     diary(fqlc);
+    fprintf('Marked bad electrodes: %s for %s. \n', badchn, subj);
     for j = 1:length(events_qc)
       ievt = events_qc{j};
       % extract trials of this event
@@ -225,14 +227,14 @@ if ~isempty(events_qc)
       sFiles.trialdata(i).(ievt) = cellfun(@(x) fullfile(ddir, x), trials_evt, 'UniformOutput', 0);  
       % mark bad channels for this event
       if ~isempty(badchn)  % empty means no bad electrodes
-        fprintf('Mark bad electrodes: %s for the event: %s for the subject: %s. \n', badchn, ievt, subj);
+        %fprintf('Mark bad electrodes: %s for the event: %s for the subject: %s. \n', badchn, ievt, subj);
         tree_set_channelflag(sFiles.trialdata(i).(ievt), 'ClearAllBad');  % cleanup previous records
         tree_set_channelflag(sFiles.trialdata(i).(ievt), 'AddBad', badchn);
       end
-      % report bad trials for this event
-      bst_process('CallProcess', 'process_evt_detect_seeg_es', sFiles.trialdata(i).(ievt), [], 'sensortypes', 'SEEG', 'montage', mtg_tmp, ... 
-                  'threshold0', 5, 'threshold1', 3, 'threshold2', -1, 'threshold3', -1, 'threshold4', 10, ...
-                  'badevtfile', {'', ''}, 'ismarkbadtrials', 1, 'isaddevent', 1);
+%       % report bad trials for this event
+%       bst_process('CallProcess', 'process_evt_detect_seeg_es', sFiles.trialdata(i).(ievt), [], 'sensortypes', 'SEEG', 'montage', mtg_tmp, ... 
+%                   'threshold0', 5, 'threshold1', 3, 'threshold2', -1, 'threshold3', -1, 'threshold4', 10, ...
+%                   'badevtfile', {'', ''}, 'ismarkbadtrials', 1, 'isaddevent', 1);
     end
     diary off
     % update sFiles
