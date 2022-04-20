@@ -4,9 +4,8 @@ function varargout = process_evt_detect_seeg_es( varargin )
 % USAGE:  OutputFiles = process_evt_detect_seeg_es('Run', sProcess, sInputs)
 
 % @=============================================================================
-% This function aims to reduce potential ictal artifacts in SEEG data according to the following study:
-% Hirshorn, E. a., Li, Y., Ward, M. J., Richardson, R. M., Fiez, J. a., & Ghuman, A. S. (2016). Decoding and disrupting
-% left midfusiform gyrus activity during word reading. PNAS, 113(29), 201604126. https://doi.org/10.1073/pnas.1604126113
+% This process mainly aims to detect "bad" trials using the criteria from Hirshorn et al. (2016) and Staresina et al. 
+% (2012, 2016).
 % 
 % Copyright (c)2000-2020 University of Southern California & McGill University
 % This software is distributed under the terms of the GNU General Public License
@@ -22,7 +21,7 @@ function varargout = process_evt_detect_seeg_es( varargin )
 % For more information type "brainstorm license" at command prompt.
 % =============================================================================@
 %
-% Authors: Shuai Wang, Anne-Sophie Dubarry 2020-2021
+% Authors: Shuai Wang, Anne-Sophie Dubarry
 
 eval(macro_method);
 end
@@ -59,11 +58,11 @@ function sProcess = GetDescription() %#ok<DEFNU>
     % Title
     sProcess.options.label11.Comment = '<BR><B>Examine Peak and Gradient:</B>:';
     sProcess.options.label11.Type    = 'label';
-    % Threshold0 - compare a peak with the Mean amplitude across trials, in terms of SD
+    % Threshold0 - compare a peak with the Mean amplitude across trials, in terms of SD (Hirshorn et al., 2016)
     sProcess.options.threshold0.Comment = 'The difference between a Peak and the Mean of peaks across trials is greater than: ';
     sProcess.options.threshold0.Type    = 'value';
     sProcess.options.threshold0.Value   = {5, 'SDs', 0};    
-    % Threshold1 - exmaine outliers within trial
+    % Threshold1 - exmaine outliers within trial (Staresina et al., 2012, 2016)
     sProcess.options.label22.Comment = 'At least one time point with value and gradient that are beyond: ';
     sProcess.options.label22.Type    = 'label';    
     sProcess.options.threshold1.Comment = {'None    ', 'Inner Fence (Q1-1.5IQ, Q3+1.5IQ)    ', 'Upper Fence (Q1-3IQ, Q3+3IQ)', ''};
@@ -153,7 +152,7 @@ function OutputFiles = Run(sProcess, sInputs) %#ok<DEFNU>
     fprintf('------------------------------------------------------------------------------------------------------\n');
     
     % Get current progressbar position
-    %progressPos = bst_progress('get');    
+    progressPos = bst_progress('get');    
     
     % ===== INITIALIZE VECTORS =====    
     % select good channels - all trials have the same configuration of channels
@@ -176,7 +175,7 @@ function OutputFiles = Run(sProcess, sInputs) %#ok<DEFNU>
     % ===== For each trial =====
     for iFile = 1:n
         % Progress bar
-        %bst_progress('text', 'Reading trial to process...');
+        bst_progress('text', 'Reading trial to process...');
 
         % Load epochs        
         DataES = in_bst_data(sInputs(iFile).FileName, 'F', 'Time', 'ChannelFlag', 'Comment');        
@@ -236,8 +235,8 @@ function OutputFiles = Run(sProcess, sInputs) %#ok<DEFNU>
         ChannelTrialsGradsOut(:, iFile) = DataES.checkThresGrad;                          
         
         % Progress bar
-        %bst_progress('text', 'Saving results...');
-        %bst_progress('set', progressPos + round(3 * iFile / n / 3 * 100));
+        bst_progress('text', 'Saving results...');
+        bst_progress('set', progressPos + round(3 * iFile / n / 3 * 100));
         % save DataES to the trial structure
         save(file_fullpath(sInputs(iFile).FileName), 'DataES', '-append');        
     end
@@ -339,9 +338,13 @@ function OutputFiles = Run(sProcess, sInputs) %#ok<DEFNU>
     fprintf('\n======================================== Channel-wise Report ========================================\n');
     fprintf('Out of %d trials : \n', n);
     chan2reject = [];
-    for iChannel = 1:length(ChannelGoodNames)
-      iChannelTrialsOutAll = ChannelTrialsOutAll(iChannel, :);
-      iChannelTrialsOutN = nnz(iChannelTrialsOutAll);
+    ChannelTrialsOutN = sum(logical(ChannelTrialsOutAll), 2);  % number of rejected trials per channel
+    [TrialsSortN, TrialsSortI] = sort(ChannelTrialsOutN, 'descend');
+    for i = 1:length(ChannelGoodNames)
+      %iChannelTrialsOutAll = ChannelTrialsOutAll(iChannel, :);
+      %iChannelTrialsOutN = nnz(iChannelTrialsOutAll);
+      iChannel = TrialsSortI(i);
+      iChannelTrialsOutN = TrialsSortN(i);
       iChannelTrialsOutRatio = iChannelTrialsOutN / n;
       if iChannelTrialsOutRatio > 0
         fprintf('%.2f%% trials are rejected due to the channel %s. \n', iChannelTrialsOutRatio*100, ChannelGoodNames{iChannel});
