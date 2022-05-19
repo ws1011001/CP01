@@ -20,11 +20,14 @@ clc
 
 %% set environment (packages, functions, working path etc.)
 % setup working path
-protocol = 'mia_SEEG_LectureVWFA';
+%protocol = 'mia_SEEG_LectureVWFA';
+protocol = 'brainstorm_SEEG_LectureVWFA';   % the name of the database
 mdir = '/media/wang/BON/Projects/CP01';     % the project folder
 wdir = fullfile(mdir, 'SEEG_LectureVWFA');  % the main working folder 
 rdir = fullfile(wdir, 'derivatives');       % path to the BIDS derivatives
 bdir = fullfile(rdir, protocol);            % path to the MIA database
+ddir = fullfile(bdir, 'data');              % path to the functional database
+vdir = fullfile(mdir, 'results', 'visualization');  % path to save images
 % read the subjects list
 fid = fopen(fullfile(mdir,'CP01_subjects.txt'));
 subjects = textscan(fid,'%s');
@@ -38,19 +41,33 @@ freq_mdbd = 80;   % the gamma frequency to separate low and high gamma
 freq_upbd = 150;  % upper boundary
 freq_bands = [freq_lobd, freq_mdbd; freq_mdbd, freq_upbd; freq_lobd, freq_upbd];
 nbands = size(freq_bands, 1);  % number of frequency bands
-conditions = {'AAp', 'AAt', 'AVp', 'AVt', 'VAp', 'VAt', 'VVp', 'VVt', ...
-              'Ap', 'Vp', 'Ap_long', 'Vp_long', 'WA', 'WV', 'PA', 'PV', 'WPA', 'WPV', ...
+conditions = {'AAp', 'AAt', 'AVp', 'AVt', ...
+              'VAp', 'VAt', 'VVp', 'VVt', ...
+              'Ap', 'Vp', 'Ap_long', 'Vp_long', ...
+              'WA', 'WV', 'PA', 'PV', 'WPA', 'WPV', ...
               'SA', 'SV', 'FA', 'FV'};
+clabels = {'Auditory-auditory Prime', 'Auditory-auditory Target', 'Auditory-visual Prime', 'Auditory-visual Target', ...
+           'Visual-auditory Prime', 'Visual-auditory Target', 'Visual-visual Prime', 'Visual-visual Target', ...
+           'Auditory Prime', 'Visual Prime', 'Auditory Prime', 'Visual Prime', ...
+           'Auditory Words', 'Visual Words', 'Auditory Pseudowords', 'Visual Pseudowords', 'Auditory W+P', 'Visual W+P', ...
+           'Auditory Scrambled', 'Visual Consonants', 'Lip-movement Video with Audio', 'Lip-movement Video without Audio'};
 ncond = length(conditions);
 pairs = {{'AAp', 'AAt'}, {'AVp', 'AVt'}, {'VAp', 'VAt'}, {'VVp', 'VVt'}, ...  % repetition 
          {'AAp', 'AVp'}, {'VVp', 'VAp'}, {'AAt', 'VAt'}, {'VVt', 'AVt'}, ...  % between-prime, between-target
          {'FA', 'FV'}};  % lip-movements with audio vs. without audio 
-% set plot options
-OPTIONS.threshp     = 0.05;
-OPTIONS.plot_signif = true;  % plot only significant results
+% figure settings
+cfgERP.fontsize  = 18;
+cfgERP.linewidth = 2;
+cfgERP.smoothing = 1;
+cfgERP.xscale    = 0.1;
+cfgERP.legend    = 'far-left';
+cfgERP.sigbar    = true;
+cfgHGA.threshp     = 0.05;
+cfgHGA.plot_signif = true;  % plot only significant results
 % set switches
-isFindCOI = true;
-isPlotChn = false;
+isFindCOI = false;
+isPlotERP = true;
+isPlotHGA = false;
 %% ---------------------------
 
 %% Find out channels of interest according to the fMRI results
@@ -76,15 +93,76 @@ if isFindCOI
         [~, I] = mni_find_regions(mni_bipo.coi.elecpos_mni, lvot.(temp));
         mni_bipo.(temp) = mni_bipo.coi.label(I);      
       end
-      % output COIs
+      % Output COIs
       fcoi = fullfile(adir, sprintf('%s_COIs_mask-lvOT.mat', subj));
       save(fcoi, 'mni_mono', 'mni_bipo');
   end
 end
 %% ---------------------------
 
-%% visualize channel-wise between-condition comparisons
-if isPlotChn
+%% Visualize ERPs for single conditions
+if isPlotERP
+  for i = 1:n
+    subj = subjects{i};
+    adir = fullfile(wdir, subj, 'anat');             % anatomical data
+    sdir = fullfile(vdir, 'timecourse_ERPs', subj);  % result folder
+    if ~exist(sdir, 'dir'); mkdir(sdir); end    
+    % Read the working file and COIs for this subject
+    ferp = fullfile(ddir, sprintf('%s_ps04_ERP_working.mat', subj));  % the working file   
+    fcoi = fullfile(adir, sprintf('%s_COIs_mask-lvOT.mat', subj));    % COIs
+    load(ferp, 'ERPs', 'contrasts');
+    load(fcoi, 'mni_mono');
+    COIs = unique([mni_mono.groi; mni_mono.gbox; mni_mono.box0; mni_mono.box7; mni_mono.box8]);  % all COIs
+    if ~isempty(COIs)
+      for icond = 1:length(conditions) 
+        c = conditions{icond};
+        % Extrat ERP signals        
+        davg = load(fullfile(ddir, ERPs.(c).avg.FileName), 'F', 'Time');
+        dstd = load(fullfile(ddir, ERPs.(c).std.FileName), 'F');
+        dste = load(fullfile(ddir, ERPs.(c).ste.FileName), 'F');
+        dsig = load(fullfile(ddir, ERPs.(c).test_fdr.FileName), 'F');
+        % Combine ERPs average and variations
+        signals.(c).n   = length(ERPs.(c).trialdata);  % number of trials
+        signals.(c).avg = davg.F .* 1e6;
+        signals.(c).std = dstd.F .* 1e6;
+        signals.(c).ste = dste.F .* 1e6;
+        signals.(c).sig = dsig.F;  % T-values with FDR correction
+        signals.(c).Time = davg.Time;  % in seconds
+        % Plot ERP for a single condition
+        ctoken = clabels(ismember(conditions, c));
+        ctitle = sprintf('%s (N=%d)', ctoken{1}, signals.(c).n);
+        ftoken = fullfile(sdir, sprintf('%s_ERP_%s', subj, c));
+        cfgERP.Time = signals.(c).Time;
+        channels = load(fullfile(ddir, ERPs.(c).test_fdr.ChannelFile), 'Channel');
+        plot_ERPs(signals.(c).avg, signals.(c).ste, signals.(c).sig, {ctitle}, channels.Channel, COIs, cfgERP, ftoken);
+      end
+      % Plot ERPs for each contrasts
+      for icont = 1:length(contrasts)
+        % Define labels
+        A = contrasts{icont, 1};  % condition A
+        B = contrasts{icont, 2};  % condition B
+        Atoken = clabels(ismember(conditions, A));
+        Btoken = clabels(ismember(conditions, B));
+        Atitle = sprintf('%s (N=%d)', Atoken{1}, signals.(A).n);
+        Btitle = sprintf('%s (N=%d)', Btoken{1}, signals.(B).n);
+        cont = sprintf('%s_%s', A, B);
+        ftoken = fullfile(sdir, sprintf('%s_ERPs_%s', subj, cont));
+        % Extract data
+        cont_avg = cat(3, signals.(A).avg, signals.(B).avg);
+        cont_ste = cat(3, signals.(A).ste, signals.(B).ste);
+        cont_sig = load(fullfile(ddir, ERPs.(cont).test_fdr.FileName), 'F');
+        % Plot ERPs
+        cfgERP.Time = signals.(A).Time;
+        channels = load(fullfile(ddir, ERPs.(cont).test_fdr.ChannelFile), 'Channel');
+        plot_ERPs(cont_avg, cont_ste, cont_sig.F, {Atitle, Btitle}, channels.Channel, COIs, cfgERP, ftoken); 
+      end
+    end
+  end  
+end
+%% ---------------------------
+
+%% Visualize channel-wise between-condition comparisons in HGA
+if isPlotHGA
   for i =1 :n
     subj = subjects{i};
     sdir = fullfile(bdir, subj);
@@ -95,7 +173,7 @@ if isPlotChn
       frequ = freq_bands(iband, 2);  % upper band
       ptoken = sprintf('bipolar_morlet_data_%d_%d_%d_removeEvoked', freq_step, freql, frequ);      
 
-      OPTIONS.ylab1       = sprintf('Gamma Activity (%d-%d Hz)', freql, frequ);
+      cfgHGA.ylab1       = sprintf('Gamma Activity (%d-%d Hz)', freql, frequ);
       
       for ipair = 1:length(pairs)
         cpair = pairs{ipair};
@@ -103,16 +181,16 @@ if isPlotChn
         % extarc parameters
         ftfa = fullfile(sdir, cpair{1}, sprintf('%s_%s.mat', cpair{1}, ptoken));  
         load(ftfa, 'zs_chn');
-        OPTIONS.labels      = zs_chn.labels(1, :);
-        OPTIONS.time        = zs_chn.time;
-        OPTIONS.win_noedges = [round(zs_chn.time(1), 2) + 0.1, round(zs_chn.time(end), 2) - 0.1];        
+        cfgHGA.labels      = zs_chn.labels(1, :);
+        cfgHGA.time        = zs_chn.time;
+        cfgHGA.win_noedges = [round(zs_chn.time(1), 2) + 0.1, round(zs_chn.time(end), 2) - 0.1];        
         % plot two-sample permutation test            
         fperm = fullfile(cdir, sprintf('%s-%s_%s.mat', cpair{1}, cpair{2}, ptoken));
         load(fperm);
-        OPTIONS.outputdir = fullfile(cdir, ptoken);
-        OPTIONS.figprefix = subj;
+        cfgHGA.outputdir = fullfile(cdir, ptoken);
+        cfgHGA.figprefix = subj;
         fprintf('Plot results for %s. \n', fperm);
-        roi_plot_conditions(zs_chn_perm, cpair, OPTIONS);  
+        roi_plot_conditions(zs_chn_perm, cpair, cfgHGA);  
       end  
     end
   end  
