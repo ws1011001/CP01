@@ -77,14 +77,15 @@ end
 ftmp = fullfile(ddir, 'ps03_PREP_working.mat');
 % take a note
 pdate = datetime('now','Format', 'yyyy-MM-dd''T''HH:mm:SS');  % the date of the present processing
-%pnote = 'Run the entire pre-processing pipeline for 10 subjects (from sub-01 to sub-10).';  # commit1
-%pnote = 'Run epoch and quality control for 10 subjects.';  % commit2
-pnote = 'Run quality control for sub-03, sub-09 and sub-10.';  % commit3
+%pnote = 'Run the entire pre-processing pipeline for 10 subjects (from sub-01 to sub-10).';  % commit1
+%pnote = 'Run epoch and quality control for 10 subjects.';                                   % commit2
+%pnote = 'Run quality control for sub-03, sub-09 and sub-10.';                               % commit3
+pnote = 'Run QC and next steps for 10 subjects (from sub-01 to sub-10).';                    % commit4
 fprintf('%s \nStart at %s. \n\n', pnote, pdate);
 if exist(ftmp, 'file')
   load(ftmp);  % read up the working file
   commits(end+1, :) = {pnote, sprintf('%s', pdate)};  % add commit
-  save(ftmp, 'commits', '-append');
+  save(ftmp, 'subjects*', 'commits', '-append');
 else
   commits = {pnote, sprintf('%s', pdate)};  % add commit
   save(ftmp, '*dir', 'subjects*', 'n', 'ptoken', 'notch_filters', 'freq*', 'events*', 'timewindow', 'baseline*', 'commits')
@@ -202,14 +203,15 @@ sFiles.QC = false;  % this step may be conducted several times to trade off chan
 % reject bad channels that are marked by visual inspection
 if ~sFiles.QC
   events_qc = fieldnames(events);
+  sFiles = rmfield(sFiles, 'trialdata');  % rodo QC so delete the previous results
 else
   events_qc = [];
 end
-if isfield(sFiles, 'trialdata')
+if isfield(sFiles, 'trialdata')  % do QC for additional events; QC should be true
   events_qc = events_qc(~ismember(events_qc, fieldnames(sFiles.trialdata)));
 end
 if ~isempty(events_qc)
-  for i = [3]  %1:n
+  for i = 1:n
     subj = subjects{i};
     fqlc = fullfile(ddir, sprintf('%s_quality-control.log', subj));
     sFiles.trialdata(i).subject = subj;
@@ -231,10 +233,10 @@ if ~isempty(events_qc)
         tree_set_channelflag(sFiles.trialdata(i).(ievt), 'ClearAllBad');  % cleanup previous records
         tree_set_channelflag(sFiles.trialdata(i).(ievt), 'AddBad', badchn);
       end
-%       % report bad trials for this event
-%       bst_process('CallProcess', 'process_evt_detect_seeg_es', sFiles.trialdata(i).(ievt), [], 'sensortypes', 'SEEG', 'montage', mtg_tmp, ... 
-%                   'threshold0', 5, 'threshold1', 3, 'threshold2', -1, 'threshold3', -1, 'threshold4', 10, ...
-%                   'badevtfile', {'', ''}, 'ismarkbadtrials', 1, 'isaddevent', 1);
+      % report bad trials for this event
+      bst_process('CallProcess', 'process_evt_detect_seeg_es', sFiles.trialdata(i).(ievt), [], 'sensortypes', 'SEEG', 'montage', mtg_tmp, ... 
+                  'threshold0', 5, 'threshold1', 3, 'threshold2', -1, 'threshold3', -1, 'threshold4', 10, ...
+                  'badevtfile', {'', ''}, 'ismarkbadtrials', 1, 'isaddevent', 0);
     end
     diary off
     % update sFiles
@@ -242,7 +244,7 @@ if ~isempty(events_qc)
     sFiles.trialdata(i).bad_electrodes = badchn;  % record bad chennels    
   end 
   % update the working file
-  %sFiles.QC = true;
+  sFiles.QC = true;
   save(ftmp, 'sFiles', '-append');
 end
 %% ---------------------------
