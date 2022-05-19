@@ -22,26 +22,34 @@ clc
 brainstorm nogui   % starts the interface but hides it.
 %brainstorm server  % run on headless servers (computation clusters with no screen attached)
 % setup working path
-mdir = '/media/wang/BON/Projects/CP01';
-ddir = fullfile(mdir, 'SEEG_LectureVWFA', 'derivatives');      % derivatives in the BIDS structure
-bdir = fullfile(ddir, 'brainstorm_SEEG_LectureVWFA', 'data');  % path to brainsotrm database
-vdir = fullfile(mdir, 'results', 'visualization');             % path to save images
-% read the subjects list
+
+% ddir = fullfile(mdir, 'SEEG_LectureVWFA', 'derivatives');      % derivatives in the BIDS structure
+% bdir = fullfile(ddir, 'brainstorm_SEEG_LectureVWFA', 'data');  % path to brainsotrm database
+% vdir = fullfile(mdir, 'results', 'visualization');             % path to save images
+
+% setup working path
+protocol = 'brainstorm_SEEG_LectureVWFA';   % the name of the database
+mdir = '/media/wang/BON/Projects/CP01';     % the project folder
+wdir = fullfile(mdir, 'SEEG_LectureVWFA');  % the main working folder 
+rdir = fullfile(wdir, 'derivatives');       % path to the BIDS derivatives
+bdir = fullfile(rdir, protocol);            % path to the BST database
+ddir = fullfile(bdir, 'data');              % path to the functional database
+% read the subjects list and information
 fid = fopen(fullfile(mdir, 'CP01_subjects.txt'));
 subjects = textscan(fid, '%s');
 fclose(fid);
 subjects = subjects{1};  % the subjects list
 n = length(subjects);
+subjects_info = readtable(fullfile(wdir, 'participants.tsv'), 'FileType', 'text');
 % set processing parameters
-ptoken = 'ses-01_task-RS_run-01_ieeg';  % raw data token
-conditions = {'AAp', 'AAt', 'AVp', 'AVt', 'VAp', 'VAt', 'VVp', 'VVt', 'Ap', 'Vp'};
-condtype = [repmat({'repetition'}, 1, 8), repmat({'prime'}, 1, 2)];
-ncond = length(conditions);
-contrasts = {'AAp2AAt', 'AVp2AVt', 'VAp2VAt', 'VVp2VVt', 'AAp2AVp', 'VVp2VAp', 'AAt2VAt', 'VVt2AVt'};  % RSE contrasts, between-prime and between-target contrasts
-montagetype  = 'orig';  % monopolar
-nperm        = 5000;    % the number of randomizations in permutation tests
-fdr_p        = 0.05;    % alpha level
-fdr_duration = 20;      % duration (in ms) for FDR correction in the time domain
+load(fullfile(ddir, 'ps03_PREP_working.mat'));  % load up pre-processing parameters
+contrasts = [{'AAp', 'AAt'}; {'AVp', 'AVt'}; {'VAp', 'VAt'}; {'VVp', 'VVt'}; ...  % RSE contrasts
+             {'AAp', 'AVp'}; {'VVp', 'VAp'}; {'AAt', 'VAt'}; {'VVt', 'AVt'}; ...  % between-prime and between-target contrasts
+             {'WV', 'PV'}; {'WV', 'SV'}; {'PV', 'SV'}; ...                        % visual stimuli
+             {'FA', 'FV'}; {'FA', 'WA'}];                                         % lip movements 
+nperm = 5000;    % the number of randomizations in permutation tests
+fdr_p = 0.05;    % alpha level
+fdr_t = 20;      % duration (in ms) for FDR correction in the time domain
 %COIs_selected = {[63:74],[37:48, 106:117]};  % sub-09
 COIs_selected = {[69:80]};  % sub-10
 % figure settings
@@ -54,78 +62,71 @@ OPTIONS.sigbar    = false;
 % set switches
 isAllTests = false;  % do statistical tests for all conditions and contrasts
 isPlotPrim = false;  % plot time-courses for (auditory and visual) prime conditions 
-isPlotRSEs = true;  % plot ERPs for RSE contrasts
+isPlotRSEs = false;  % plot ERPs for RSE contrasts
 %% ---------------------------
 
 %% perform permutation tests on individual ERPs
 if isAllTests
   for i = 1:n
     subj = subjects{i};
-    % read working filenames
-    ftmp = fullfile(bdir, subj, sprintf('%s_%s_working-filenames.mat', subj, ptoken));  
-    load(ftmp);
-    % group all conditions
-    sConds = [{oFiles.primes.Condition}, {oFiles.repetitions.Condition}];
-    sFiles = cellfun(@(x) fullfile(bdir, x), [{oFiles.primes.FileName}, {oFiles.repetitions.FileName}], 'UniformOutput', 0);
-    % calculate the mean, SD, and SE of ERPs for each condition
-    for icond = 1:ncond
-      cndt = conditions{icond};
-      cidx = ismember(sConds, [cndt '_' montagetype]);
-      oFiles.(cndt) = sFiles(cidx);
-      fprintf('Calculate the mean, SD, and SE of ERPs for the condition %s for subject %s. \n', cndt, subj);
-      % calculate average and variation Process: By trial group (folder average) i.e. 'avgtype', 5
-      ERPs.(cndt).favg = bst_process('CallProcess', 'process_average', oFiles.(cndt), [], 'avgtype', 5, 'avg_func', 1, ...  % Arithmetic average:  mean(x)
-                                     'weighted', 0, 'keepevents', 0);      
-      ERPs.(cndt).fstd = bst_process('CallProcess', 'process_average', oFiles.(cndt), [], 'avgtype', 5, 'avg_func', 4, ...  % Standard deviation:  sqrt(var(x))
-                                     'weighted', 0, 'keepevents', 0);      
-      ERPs.(cndt).fste = bst_process('CallProcess', 'process_average', oFiles.(cndt), [], 'avgtype', 5, 'avg_func', 5, ...  % Standard error:  sqrt(var(x)/N)
-                                     'weighted', 0, 'keepevents', 0);
-      % determine the baseline and time-window according to the condition
-      bl = baseline.(condtype{icond});
-      tw = timewindow.(condtype{icond});
-      % one sample T-test with baseline : Y = mean_trials(X); t = (Y - mean_time(Y(baseline)) / std_time(Y(baseline))); df = length(baseline) - 1
-      fprintf('Conduct one sample T-test for the condition %s for subject %s. \n', cndt, subj);
-      ERPs.(cndt).ftest = bst_process('CallProcess', 'process_test_baseline', oFiles.(cndt), [], 'baseline', bl, 'timewindow', tw, ...
-                                      'sensortypes', 'SEEG', 'isabs', 0, 'avgtime', 0, 'avgrow', 0, 'test_type', 'ttest_baseline', 'tail', 'two');
-      % apply statistic threshold: alpha = 0.05 (FDR: control time)
-      ERPs.(cndt).ftest_fdr = bst_process('CallProcess', 'process_extract_pthresh', ERPs.(cndt).ftest, [], 'pthresh', fdr_p, ...
-                                          'durthresh', fdr_duration, 'correction', 3, 'control1', 0, 'control2', 1, 'control3', 0);
+    sidx = find(ismember({sFiles.trialdata.subject}, subj));
+    % initialize working file
+    ftmp = fullfile(ddir, sprintf('%s_ps04_ERP_working.mat', subj));  
+    % Statistics for single condition
+    for ievts = 1:length(sFiles.events_epoch)
+      evts = sFiles.events_epoch{ievts};               % event category, e.g., repetition
+      conditions = strsplit(events.(evts), ', ');      % conditions in the event category, e.g., AAp, AAt, AVp, AVt, VAp, VAt, VVp, VVt
+      trialdata = sFiles.monopolar_norm(sidx).(evts);  % normalized monopolar trials
+      bl = baseline.(evts);    % baseline for the category
+      tw = timewindow.(evts);  % timewindow for the category
+      for icond = 1:length(conditions)
+        c = conditions{icond};           % a specific condition, e.g., AAp
+        c_norm = sprintf('%s_orig', c);  % condition name for normalized data
+        d = trialdata(ismember({trialdata.Condition}, c_norm));
+        badtrl = load(fullfile(ddir, subj, c, 'brainstormstudy.mat'), 'BadTrials');
+        if ~isempty(badtrl.BadTrials)
+          badidx = cell2mat(cellfun(@(x) str2num(x(end-6:end-4)), badtrl.BadTrials, 'UniformOutput', 0));
+        else
+          badidx = [];
+        end
+        d(badidx) = [];  % remove bad trials
+        % calculate average and variation Process: By trial group (folder average) i.e. 'avgtype', 5
+        ERPs.(c).avg = bst_process('CallProcess', 'process_average', d, [], 'avgtype', 5, 'avg_func', 1, 'weighted', 0, 'keepevents', 0);  % Arithmetic average:  mean(x)                                          
+        ERPs.(c).std = bst_process('CallProcess', 'process_average', d, [], 'avgtype', 5, 'avg_func', 4, 'weighted', 0, 'keepevents', 0);  % Standard deviation:  sqrt(var(x))   
+        ERPs.(c).ste = bst_process('CallProcess', 'process_average', d, [], 'avgtype', 5, 'avg_func', 5, 'weighted', 0, 'keepevents', 0);  % Standard error:  sqrt(var(x)/N)  
+        % one sample T-test with baseline : Y = mean_trials(X); t = (Y - mean_time(Y(baseline)) / std_time(Y(baseline))); df = length(baseline) - 1
+        fprintf('Conduct one sample T-test for the condition %s for subject %s. \n', c, subj);
+        ERPs.(c).test = bst_process('CallProcess', 'process_test_baseline', d, [], 'baseline', bl, 'timewindow', tw, ...
+                                    'sensortypes', 'SEEG', 'isabs', 0, 'avgtime', 0, 'avgrow', 0, 'test_type', 'ttest_baseline', 'tail', 'two');
+        % apply statistic threshold: alpha = 0.05 (FDR: control time)
+        ERPs.(c).test_fdr = bst_process('CallProcess', 'process_extract_pthresh', ERPs.(c).test, [], 'pthresh', fdr_p, ...
+                                        'durthresh', fdr_t, 'correction', 3, 'control1', 0, 'control2', 1, 'control3', 0);  
+        % update parameters
+        ERPs.(c).trialdata = d;  % only good trials
+        ERPs.(c).baseline = bl;
+        ERPs.(c).timewindow = tw;
+        ERPs.(c).fdr_params = [fdr_p, fdr_t];
+      end
     end
-    % do permutation tests with paired samples : T = mean(A-B) / std(A-B) * sqrt(n)  
-    fprintf('Conduct permutation tests [AAp-AAt | AVp-AVt | VAp-VAt | VVp-VVt] for subject %s. \n', subj);
-    ERPs.perm.AAp2AAt = bst_process('CallProcess', 'process_test_permutation2p', oFiles.AAp, oFiles.AAt, 'timewindow', timewindow.repetition, ...
-                                    'sensortypes', 'SEEG', 'isabs', 0, 'avgtime', 0, 'avgrow', 0, 'iszerobad', 1, 'Comment', '', ...
-                                    'test_type', 'ttest_paired', 'randomizations', nperm, 'tail', 'two');
-    ERPs.perm.AVp2AVt = bst_process('CallProcess', 'process_test_permutation2p', oFiles.AVp, oFiles.AVt, 'timewindow', timewindow.repetition, ...
-                                    'sensortypes', 'SEEG', 'isabs', 0, 'avgtime', 0, 'avgrow', 0, 'iszerobad', 1, 'Comment', '', ...
-                                    'test_type', 'ttest_paired', 'randomizations', nperm, 'tail', 'two');
-    ERPs.perm.VAp2VAt = bst_process('CallProcess', 'process_test_permutation2p', oFiles.VAp, oFiles.VAt, 'timewindow', timewindow.repetition, ...
-                                    'sensortypes', 'SEEG', 'isabs', 0, 'avgtime', 0, 'avgrow', 0, 'iszerobad', 1, 'Comment', '', ...
-                                    'test_type', 'ttest_paired', 'randomizations', nperm, 'tail', 'two');
-    ERPs.perm.VVp2VVt = bst_process('CallProcess', 'process_test_permutation2p', oFiles.VVp, oFiles.VVt, 'timewindow', timewindow.repetition, ...
-                                    'sensortypes', 'SEEG', 'isabs', 0, 'avgtime', 0, 'avgrow', 0, 'iszerobad', 1, 'Comment', '', ...
-                                    'test_type', 'ttest_paired', 'randomizations', nperm, 'tail', 'two');     
-    % do permutation test with two samples : H0:(A=B), H1:(A<>B) T = (mean(A)-mean(B)) / (Sx * sqrt(1/nA + 1/nB)), Sx = sqrt(((nA-1)*var(A) + (nB-1)*var(B)) / (nA+nB-2))                                    
-    ERPs.perm.AAp2AVp = bst_process('CallProcess', 'process_test_permutation2', oFiles.AAp, oFiles.AVp, 'timewindow', timewindow.repetition, ...
-                                    'sensortypes', 'SEEG', 'isabs', 0, 'avgtime', 0, 'avgrow', 0, 'iszerobad', 1, 'Comment', '', ...
-                                    'test_type', 'ttest_equal', 'randomizations', nperm, 'tail', 'two');
-    ERPs.perm.VVp2VAp = bst_process('CallProcess', 'process_test_permutation2', oFiles.VVp, oFiles.VAp, 'timewindow', timewindow.repetition, ...
-                                    'sensortypes', 'SEEG', 'isabs', 0, 'avgtime', 0, 'avgrow', 0, 'iszerobad', 1, 'Comment', '', ...
-                                    'test_type', 'ttest_equal', 'randomizations', nperm, 'tail', 'two');                                  
-    ERPs.perm.AAt2VAt = bst_process('CallProcess', 'process_test_permutation2', oFiles.AAt, oFiles.VAt, 'timewindow', timewindow.repetition, ...
-                                    'sensortypes', 'SEEG', 'isabs', 0, 'avgtime', 0, 'avgrow', 0, 'iszerobad', 1, 'Comment', '', ...
-                                    'test_type', 'ttest_equal', 'randomizations', nperm, 'tail', 'two');
-    ERPs.perm.VVt2AVt = bst_process('CallProcess', 'process_test_permutation2', oFiles.VVt, oFiles.AVt, 'timewindow', timewindow.repetition, ...
-                                    'sensortypes', 'SEEG', 'isabs', 0, 'avgtime', 0, 'avgrow', 0, 'iszerobad', 1, 'Comment', '', ...
-                                    'test_type', 'ttest_equal', 'randomizations', nperm, 'tail', 'two');                                  
-    % apply statistic threshold: alpha = 0.05 (FDR: control duration 20 ms)  
+    % Between-condition comparisons
     for icont = 1:length(contrasts)
-      ERPs.perm.([contrasts{icont} '_fdr']) = bst_process('CallProcess', 'process_extract_pthresh', ERPs.perm.(contrasts{icont}), [], ...
-                                                          'pthresh', 0.05, 'durthresh', fdr_duration, 'correction', 3, 'control1', 0, 'control2', 1, 'control3', 0);
+      A = contrasts{icont, 1};  % condition A
+      B = contrasts{icont, 2};  % condition B
+      cont = sprintf('%s_%s', A, B);
+      % do permutation test with two samples : H0:(A=B), H1:(A<>B) T = (mean(A)-mean(B)) / (Sx * sqrt(1/nA + 1/nB)), Sx = sqrt(((nA-1)*var(A) + (nB-1)*var(B)) / (nA+nB-2))                                    
+      ERPs.(cont).test = bst_process('CallProcess', 'process_test_permutation2', ERPs.(A).trialdata, ERPs.(B).trialdata, ...
+                                     'timewindow', ERPs.(A).timewindow, 'sensortypes', 'SEEG', 'isabs', 0, 'avgtime', 0, ...
+                                     'avgrow', 0, 'iszerobad', 1, 'Comment', '', 'test_type', 'ttest_equal', 'randomizations', nperm, 'tail', 'two');   
+      % apply statistic threshold: alpha = 0.05 (FDR: control duration 20 ms)  
+      ERPs.(cont).test_fdr = bst_process('CallProcess', 'process_extract_pthresh', ERPs.(cont).test, [], 'pthresh', fdr_p, ...
+                                         'durthresh', fdr_t, 'correction', 3, 'control1', 0, 'control2', 1, 'control3', 0);  
+      % update parameters
+      ERPs.(cont).timewindow = ERPs.(A).timewindow;
+      ERPs.(cont).nperm = nperm;
+      ERPs.(cont).fdr_params = [fdr_p, fdr_t];
     end
-    % output the full path of working files
-    ferp = fullfile(bdir, subj, sprintf('%s_%s_ERPs-monopolar.mat', subj, ptoken));
-    save(ferp, 'ERPs', 'oFiles', 'nperm', 'fdr_p', 'fdr_duration');
+    % save the working files
+    save(ftmp, 'subj', 'sidx', 'contrasts', 'ERPs');
   end
 end
 %% ---------------------------
