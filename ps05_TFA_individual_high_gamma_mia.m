@@ -204,7 +204,6 @@ if ~isfield(miacfg, 'permutation')
         cfg = stats;
         cfg.labels      = zs_chn.labels(1, :);
         cfg.time        = zs_chn.time;
-        cfg.plot_signif = true;
         for ipair = 1:length(pairs)
           cpair = pairs{ipair};
           cdir = fullfile(sdir, 'contrasts', sprintf('%s-%s', cpair{1}, cpair{2}));
